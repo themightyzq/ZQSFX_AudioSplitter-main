@@ -1,4 +1,5 @@
 @echo off
+
 echo Starting build process...
 
 set APP_NAME=ZQ SFX Audio Splitter
@@ -43,11 +44,22 @@ if not exist "ffmpeg\ffprobe.exe" (
 
 echo FFmpeg binaries found.
 
-REM Step 5: Run PyInstaller with --onefile
+REM Step 5: Verify presence of tkdnd
+echo Verifying presence of tkdnd directory...
+if not exist "tkdnd" (
+    echo Error: 'tkdnd' directory not found. Please ensure the 'tkdnd' directory is in the root of the project.
+    pause
+    exit /b 1
+)
+
+echo tkdnd directory found.
+
+REM Step 6: Run PyInstaller with --onefile
 echo Running PyInstaller...
 pyinstaller --onefile --windowed --name "%APP_NAME%" audio_splitter_gui.py ^
 --add-binary "ffmpeg\ffmpeg.exe;ffmpeg" ^
 --add-binary "ffmpeg\ffprobe.exe;ffmpeg" ^
+--add-data "tkdnd;tkdnd" ^
 --hidden-import=pydub.utils ^
 --hidden-import=pydub ^
 --hidden-import=numpy ^

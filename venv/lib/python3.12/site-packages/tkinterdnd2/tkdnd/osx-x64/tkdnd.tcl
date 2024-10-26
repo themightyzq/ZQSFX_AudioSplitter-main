@@ -123,7 +123,8 @@ namespace eval ::tkdnd {
       x11 {
         set _windowingsystem x11
       }
-      win32 {
+      win32 -
+      windows {
         set _windowingsystem windows
       }
       aqua  {
@@ -207,7 +208,7 @@ namespace eval ::tkdnd {
         error "unknown Tk windowing system"
       }
     }
-    load $dir/$PKG_LIB_FILE [string totitle $PACKAGE_NAME 0 0]
+    load $dir/$PKG_LIB_FILE $PACKAGE_NAME
     source $dir/tkdnd_compat.tcl
     ${_platform_namespace}::initialise
   };# initialise

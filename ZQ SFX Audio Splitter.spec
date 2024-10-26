@@ -5,7 +5,7 @@ a = Analysis(
     ['audio_splitter_gui.py'],
     pathex=[],
     binaries=[('ffmpeg/ffmpeg', 'ffmpeg'), ('ffmpeg/ffprobe', 'ffmpeg')],
-    datas=[],
+    datas=[('tkdnd', 'tkdnd')],
     hiddenimports=['tkinter', 'pydub.utils', 'pydub', 'numpy'],
     hookspath=[],
     hooksconfig={},
