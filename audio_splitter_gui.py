@@ -4,7 +4,7 @@ import os
 import sys
 import logging
 import traceback
-import threading
+import threading 
 import queue
 from tkinter import (
     Tk, Label, Entry, Button, StringVar, IntVar, BooleanVar, filedialog,
