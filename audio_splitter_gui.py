@@ -341,7 +341,9 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
 def browse_input_dir(message_queue):
     global last_input_dir
     try:
-        directory = filedialog.askdirectory(initialdir=last_input_dir)
+        # Use the current value of input_dir_var as the initial directory
+        initial_dir = input_dir_var.get() if os.path.isdir(input_dir_var.get()) else last_input_dir
+        directory = filedialog.askdirectory(initialdir=initial_dir)
         if directory:
             input_dir_var.set(directory)
             logger.debug(f"Selected input directory: {directory}")
@@ -355,7 +357,9 @@ def browse_input_dir(message_queue):
 def browse_output_dir(message_queue):
     global last_output_dir
     try:
-        directory = filedialog.askdirectory(initialdir=last_output_dir)
+        # Use the current value of output_dir_var as the initial directory
+        initial_dir = output_dir_var.get() if os.path.isdir(output_dir_var.get()) else last_output_dir
+        directory = filedialog.askdirectory(initialdir=initial_dir)
         if directory:
             output_dir_var.set(directory)
             logger.debug(f"Selected output directory: {directory}")
