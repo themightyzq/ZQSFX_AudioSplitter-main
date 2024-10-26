@@ -4,8 +4,9 @@ import os
 import sys
 import logging
 import traceback
-import threading 
+import threading
 import queue
+from tkinterdnd2 import TkinterDnD, DND_FILES
 from tkinter import (
     Tk, Label, Entry, Button, StringVar, IntVar, BooleanVar, filedialog,
     messagebox, Frame, Checkbutton
@@ -23,6 +24,10 @@ def get_application_root():
     else:
         app_root = os.path.dirname(os.path.abspath(__file__))
     return app_root
+
+tkdnd_path = os.path.join(get_application_root(), "tkdnd")
+if tkdnd_path not in sys.path:
+    sys.path.append(tkdnd_path)
 
 def get_log_file_path():
     home = os.path.expanduser("~")
@@ -53,6 +58,25 @@ def setup_logging():
             handlers=[logging.StreamHandler(sys.stdout)],
         )
         logging.error(f"Failed to set up logging to file: {e}")
+
+def handle_drop(event, dir_var, message_queue):
+    try:
+        # Extract the dropped path
+        dropped_path = event.data.strip('{}')
+        logger.debug(f"Dropped path: {dropped_path}")
+
+        # Check if the dropped path is a directory
+        if os.path.isdir(dropped_path):
+            dir_var.set(dropped_path)
+            logger.debug(f"Directory set via drag-and-drop: {dropped_path}")
+            update_file_count()
+        else:
+            logger.error(f"Dropped item is not a directory: {dropped_path}")
+            message_queue.put(("error", "Error", "Dropped item is not a directory."))
+    except Exception as e:
+        logger.error(f"Error handling drag-and-drop: {e}")
+        logger.debug(traceback.format_exc())
+        message_queue.put(("error", "Error", f"Error handling drag-and-drop: {e}"))
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -446,7 +470,7 @@ def main():
 
         global last_input_dir, last_output_dir
 
-        root = Tk()
+        root = TkinterDnD.Tk()
         root.title("ZQ SFX Audio Splitter")
 
         message_queue = queue.Queue()
@@ -466,7 +490,10 @@ def main():
         label_width = 15  # Adjust as needed
 
         Label(input_frame, text="Input Directory:", width=label_width, anchor='e').grid(row=0, column=0, sticky="e", padx=5, pady=5)
-        Entry(input_frame, textvariable=input_dir_var).grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+        input_dir_entry = Entry(input_frame, textvariable=input_dir_var)
+        input_dir_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+        input_dir_entry.drop_target_register(DND_FILES)
+        input_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, input_dir_var, message_queue))
         Button(input_frame, text="Browse...", command=lambda: browse_input_dir(message_queue)).grid(row=0, column=2, padx=5, pady=5)
         Label(input_frame, textvariable=file_count_var).grid(row=1, column=1, sticky="w", padx=5)
 
@@ -478,7 +505,10 @@ def main():
         output_frame.columnconfigure(1, weight=1)  # Make the entry field expand
 
         Label(output_frame, text="Output Directory:", width=label_width, anchor='e').grid(row=0, column=0, sticky="e", padx=5, pady=5)
-        Entry(output_frame, textvariable=output_dir_var).grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+        output_dir_entry = Entry(output_frame, textvariable=output_dir_var)
+        output_dir_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+        output_dir_entry.drop_target_register(DND_FILES)
+        output_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, output_dir_var, message_queue))
         Button(output_frame, text="Browse...", command=lambda: browse_output_dir(message_queue)).grid(row=0, column=2, padx=5, pady=5)
 
         # Override Options Frame

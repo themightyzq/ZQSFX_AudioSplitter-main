@@ -35,11 +35,20 @@ if [ ! -f "ffmpeg/ffmpeg" ] || [ ! -f "ffmpeg/ffprobe" ]; then
 fi
 echo "FFmpeg binaries found."
 
-# Step 5: Run PyInstaller with --onefile
+# Step 5: Verify presence of tkdnd
+echo "Verifying presence of tkdnd directory..."
+if [ ! -d "tkdnd" ]; then
+    echo "Error: 'tkdnd' directory not found. Please ensure the 'tkdnd' directory is in the root of the project."
+    exit 1
+fi
+echo "tkdnd directory found."
+
+# Step 6: Run PyInstaller with --onefile
 echo "Running PyInstaller..."
 pyinstaller --onefile --windowed --name "$APP_NAME" audio_splitter_gui.py \
     --add-binary "ffmpeg/ffmpeg:ffmpeg" \
     --add-binary "ffmpeg/ffprobe:ffmpeg" \
+    --add-data "tkdnd:tkdnd" \
     --hidden-import=tkinter \
     --hidden-import=pydub.utils \
     --hidden-import=pydub \
