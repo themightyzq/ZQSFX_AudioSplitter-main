@@ -9,13 +9,25 @@ import queue
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from tkinter import (
     Tk, Label, Entry, Button, StringVar, IntVar, BooleanVar, filedialog,
-    messagebox, Frame, Checkbutton
+    messagebox, Frame, Checkbutton, Radiobutton, LabelFrame 
 )
 from tkinter import ttk
 from pydub import AudioSegment
 from pydub.utils import which
 import subprocess
 import json
+
+def toggle_sample_rate_dropdown():
+    if override_sample_rate_var.get():
+        sample_rate_dropdown.config(state="readonly")
+    else:
+        sample_rate_dropdown.config(state="disabled")
+
+def toggle_bit_depth_dropdown():
+    if override_bit_depth_var.get():
+        bit_depth_dropdown.config(state="readonly")
+    else:
+        bit_depth_dropdown.config(state="disabled")
 
 def get_application_root():
     if getattr(sys, 'frozen', False):
@@ -197,7 +209,7 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
         AudioSegment.ffprobe = ffprobe_path
         logger.debug(f"AudioSegment.ffprobe within thread set to: {AudioSegment.ffprobe}")
 
-        # **Ensure ffmpeg directory is in PATH within the thread**
+        # Ensure ffmpeg directory is in PATH within the thread
         ffmpeg_dir = os.path.dirname(ffprobe_path)
         if ffmpeg_dir not in os.environ["PATH"]:
             os.environ["PATH"] += os.pathsep + ffmpeg_dir
@@ -221,6 +233,10 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
         processed_files = 0
         error_files = 0
 
+        # Get naming scheme and custom names
+        naming_scheme = naming_scheme_var.get()
+        custom_names = custom_names_var.get().split(",") if naming_scheme == "custom" else []
+
         for idx, wav_file in enumerate(wav_files):
             input_file = os.path.join(input_dir, wav_file)
             logger.info(f"Processing file: {input_file}")
@@ -232,11 +248,11 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
             progress_bar.update_idletasks()
 
             try:
-                # **Set ffprobe path before loading each file**
+                # Set ffprobe path before loading each file
                 AudioSegment.ffprobe = ffprobe_path
                 logger.debug(f"AudioSegment.ffprobe before loading '{wav_file}': {AudioSegment.ffprobe}")
 
-                # **Ensure ffmpeg directory is in PATH before loading each file**
+                # Ensure ffmpeg directory is in PATH before loading each file
                 if ffmpeg_dir not in os.environ["PATH"]:
                     os.environ["PATH"] += os.pathsep + ffmpeg_dir
                     logger.debug(f"Before loading '{wav_file}': Updated PATH with ffmpeg directory: {ffmpeg_dir}")
@@ -298,7 +314,10 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
                 logger.debug(f"Using codec '{codec}' for sample_fmt '{sample_fmt}'.")
 
                 base_name, _ = os.path.splitext(wav_file)
-                output_filename = f"{base_name}_chan{channel_number}.wav"
+                if naming_scheme == "custom" and channel_idx < len(custom_names):
+                    output_filename = f"{base_name}_{custom_names[channel_idx]}.wav"
+                else:
+                    output_filename = f"{base_name}_chan{channel_number}.wav"
                 output_file = os.path.join(output_dir, output_filename)
                 logger.debug(f"Output file will be '{output_file}'.")
 
@@ -473,63 +492,82 @@ def main():
         load_config()
 
         global last_input_dir, last_output_dir
+        global naming_scheme_var, custom_names_var, input_dir_var, file_count_var, output_dir_var
+        global override_sample_rate_var, sample_rate_var, override_bit_depth_var, bit_depth_var, channel_vars
+        global progress_var, progress_bar, split_button, open_output_button
+        global sample_rate_dropdown, bit_depth_dropdown
 
         root = TkinterDnD.Tk()
         root.title("ZQ SFX Audio Splitter")
+        root.geometry("800x600")  # Set a default size
+        root.minsize(800, 600)  # Set a minimum size
+        root.maxsize(1200, 800)  # Set a maximum size
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(0, weight=1)
+
+        main_frame = Frame(root)
+        main_frame.grid(sticky="nsew")
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(0, weight=1)
+
+        naming_scheme_var = StringVar(value="default")
+        custom_names_var = StringVar(value="L,R,C,lfe,Ls,Rs,Lss,Rss")
+        input_dir_var = StringVar(value=last_input_dir)
+        file_count_var = StringVar()
+        file_count_var.set("Files to process: 0")
+        output_dir_var = StringVar(value=last_output_dir)
+        override_sample_rate_var = BooleanVar()
+        sample_rate_var = StringVar(value="48000 Hz")
+        override_bit_depth_var = BooleanVar()
+        bit_depth_var = StringVar(value="16 bit")
+        channel_vars = [BooleanVar(value=True) for _ in range(8)]
+        progress_var = IntVar()
 
         message_queue = queue.Queue()
 
         root.protocol("WM_DELETE_WINDOW", lambda: on_closing(root, message_queue))
 
-        # Input Directory Frame
-        global input_dir_var, file_count_var
-        input_dir_var = StringVar(value=last_input_dir)
-        file_count_var = StringVar()
-        file_count_var.set("Files to process: 0")
+        # Header Section
+        header_frame = Frame(main_frame)
+        header_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        Label(header_frame, text="ZQ SFX Audio Splitter", font=("Helvetica", 16, "bold")).grid(row=0, column=0, sticky="w", padx=5, pady=5)
 
-        input_frame = Frame(root)
-        input_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
-        input_frame.columnconfigure(1, weight=1)  # Make the entry field expand
+        # Split Single File Section
+        single_file_frame = LabelFrame(main_frame, text="Split Single File", font=("Helvetica", 12, "bold"))
+        single_file_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+        single_file_frame.columnconfigure(1, weight=1)
 
-        label_width = 15  # Adjust as needed
+        # Placeholder for Split Single File section
+        Label(single_file_frame, text="Placeholder for Split Single File section").grid(row=0, column=0, sticky="w", padx=5, pady=5)
 
-        Label(input_frame, text="Input Directory:", width=label_width, anchor='e').grid(row=0, column=0, sticky="e", padx=5, pady=5)
-        input_dir_entry = Entry(input_frame, textvariable=input_dir_var)
+        # Input Directory Section
+        input_section_frame = LabelFrame(main_frame, text="Split Multiple Files", font=("Helvetica", 12, "bold"))
+        input_section_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
+        input_section_frame.columnconfigure(1, weight=1)
+
+        Label(input_section_frame, text="Input Directory:", width=15, anchor='w').grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        input_dir_entry = Entry(input_section_frame, textvariable=input_dir_var)
         input_dir_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
         input_dir_entry.drop_target_register(DND_FILES)
         input_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, input_dir_var, message_queue))
-        Button(input_frame, text="Browse...", command=lambda: browse_input_dir(message_queue)).grid(row=0, column=2, padx=5, pady=5)
-        Label(input_frame, textvariable=file_count_var).grid(row=1, column=1, sticky="w", padx=5)
+        Button(input_section_frame, text="Browse...", command=lambda: browse_input_dir(message_queue)).grid(row=0, column=2, padx=5, pady=5)
+        Label(input_section_frame, textvariable=file_count_var, font=("Helvetica", 10, "italic")).grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
-        # Output Directory Frame
-        global output_dir_var
-        output_dir_var = StringVar(value=last_output_dir)
-        output_frame = Frame(root)
-        output_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
-        output_frame.columnconfigure(1, weight=1)  # Make the entry field expand
+        # Output Directory Section
+        output_section_frame = LabelFrame(main_frame, text="Output Location", font=("Helvetica", 12, "bold"))
+        output_section_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
+        output_section_frame.columnconfigure(1, weight=1)
 
-        Label(output_frame, text="Output Directory:", width=label_width, anchor='e').grid(row=0, column=0, sticky="e", padx=5, pady=5)
-        output_dir_entry = Entry(output_frame, textvariable=output_dir_var)
+        Label(output_section_frame, text="Output Directory:", width=15, anchor='w').grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        output_dir_entry = Entry(output_section_frame, textvariable=output_dir_var)
         output_dir_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
         output_dir_entry.drop_target_register(DND_FILES)
         output_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, output_dir_var, message_queue))
-        Button(output_frame, text="Browse...", command=lambda: browse_output_dir(message_queue)).grid(row=0, column=2, padx=5, pady=5)
+        Button(output_section_frame, text="Browse...", command=lambda: browse_output_dir(message_queue)).grid(row=0, column=2, padx=5, pady=5)
 
-        # Override Options Frame
-        override_frame = Frame(root)
-        override_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
-
-        # Sample Rate Override
-        global override_sample_rate_var, sample_rate_var
-        override_sample_rate_var = BooleanVar()
-        sample_rate_var = StringVar(value="48000")
-        sample_rate_options = ["11025", "22050", "44100", "48000", "96000"]
-
-        def toggle_sample_rate_dropdown():
-            if override_sample_rate_var.get():
-                sample_rate_dropdown.config(state="readonly")
-            else:
-                sample_rate_dropdown.config(state="disabled")
+        # Override Options Section
+        override_frame = LabelFrame(main_frame, text="Override Options", font=("Helvetica", 12, "bold"))
+        override_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=5)
 
         Checkbutton(
             override_frame,
@@ -541,27 +579,11 @@ def main():
         sample_rate_dropdown = ttk.Combobox(
             override_frame,
             textvariable=sample_rate_var,
-            values=sample_rate_options,
+            values=["11025 Hz", "22050 Hz", "44100 Hz", "48000 Hz", "96000 Hz"],
             state="disabled",
-            width=10
+            width=15
         )
         sample_rate_dropdown.grid(row=0, column=1, padx=5, pady=5)
-        Label(override_frame, text="Hz").grid(row=0, column=2, sticky="w", padx=5, pady=5)
-
-        # Initialize the state of the sample rate dropdown
-        toggle_sample_rate_dropdown()
-
-        # Bit Depth Override
-        global override_bit_depth_var, bit_depth_var
-        override_bit_depth_var = BooleanVar()
-        bit_depth_var = StringVar(value="16")
-        bit_depth_options = ["8", "16", "24", "32"]
-
-        def toggle_bit_depth_dropdown():
-            if override_bit_depth_var.get():
-                bit_depth_dropdown.config(state="readonly")
-            else:
-                bit_depth_dropdown.config(state="disabled")
 
         Checkbutton(
             override_frame,
@@ -573,79 +595,106 @@ def main():
         bit_depth_dropdown = ttk.Combobox(
             override_frame,
             textvariable=bit_depth_var,
-            values=bit_depth_options,
+            values=["8 bit", "16 bit", "24 bit", "32 bit"],
             state="disabled",
-            width=10
+            width=15
         )
         bit_depth_dropdown.grid(row=1, column=1, padx=5, pady=5)
-        Label(override_frame, text="bit").grid(row=1, column=2, sticky="w", padx=5, pady=5)
 
-        # Initialize the state of the bit depth dropdown
-        toggle_bit_depth_dropdown()
+        # Ensure the columns do not expand
+        for col in range(2):
+            override_frame.columnconfigure(col, weight=0)
 
-        # Channel Selection Frame
-        channel_frame = Frame(root)
-        channel_frame.grid(row=3, column=0, sticky="w", padx=5, pady=5)
+        # Channel Selection and Naming Scheme Section
+        channel_naming_frame = Frame(main_frame)
+        channel_naming_frame.grid(row=5, column=0, sticky="ew", padx=5, pady=5)
+        channel_naming_frame.columnconfigure(0, weight=1)
+        channel_naming_frame.columnconfigure(1, weight=1)
+
+        channel_frame = LabelFrame(channel_naming_frame, text="Channel Selection", font=("Helvetica", 12, "bold"))
+        channel_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        channel_frame.columnconfigure(0, weight=1)
 
         Label(channel_frame, text="Select Channels to Process:").grid(row=0, column=0, columnspan=4, sticky="w", padx=5, pady=5)
 
-        # Assuming max 8 channels
-        global channel_vars
-        channel_vars = [BooleanVar(value=True) for _ in range(8)]
+        # Lock the positions of the channel buttons
+        for idx in range(8):
+            Checkbutton(
+                channel_frame,
+                text=f"Channel {idx + 1}",
+                variable=channel_vars[idx]
+            ).grid(row=1 + idx // 4, column=idx % 4, sticky="w", padx=5, pady=2)
 
-        # Configure columns to prevent unnecessary expansion
+        # Ensure the columns do not expand
         for col in range(4):
-            channel_frame.columnconfigure(col, weight=0, minsize=0)
+            channel_frame.columnconfigure(col, weight=0)
 
-        # Desired channel order
-        # Row 1: Channels 1, 3, 5, 7
-        # Row 2: Channels 2, 4, 6, 8
+        naming_scheme_frame = LabelFrame(channel_naming_frame, text="Channel Name", font=("Helvetica", 12, "bold"))
+        naming_scheme_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
+        naming_scheme_frame.columnconfigure(0, weight=1)
 
-        channels_in_rows = [
-            [0, 2, 4, 6],  # Channels 1, 3, 5, 7
-            [1, 3, 5, 7]   # Channels 2, 4, 6, 8
-        ]
+        Label(naming_scheme_frame, text="Naming Scheme:").grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=5)
 
-        for row_idx, channel_indices in enumerate(channels_in_rows):
-            for col_idx, channel_idx in enumerate(channel_indices):
-                Checkbutton(
-                    channel_frame,
-                    text=f"Channel {channel_idx + 1}",
-                    variable=channel_vars[channel_idx]
-                ).grid(row=row_idx+1, column=col_idx, sticky="w", padx=5, pady=2)
+        default_naming_radio = Radiobutton(
+            naming_scheme_frame,
+            text="Default (chan1, chan2, ...)",
+            variable=naming_scheme_var,
+            value="default"
+        )
+        default_naming_radio.grid(row=1, column=0, sticky="w", padx=5, pady=5)
 
-        # Progress Bar
-        global progress_var, progress_bar
-        progress_var = IntVar()
+        custom_naming_radio = Radiobutton(
+            naming_scheme_frame,
+            text="Custom",
+            variable=naming_scheme_var,
+            value="custom"
+        )
+        custom_naming_radio.grid(row=2, column=0, sticky="w", padx=5, pady=5)
+
+        custom_names_entry = Entry(naming_scheme_frame, textvariable=custom_names_var, state="disabled")
+        custom_names_entry.grid(row=3, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
+
+        def toggle_custom_names_entry():
+            if naming_scheme_var.get() == "custom":
+                custom_names_entry.config(state="normal")
+            else:
+                custom_names_entry.config(state="disabled")
+
+        naming_scheme_var.trace("w", lambda *args: toggle_custom_names_entry())
+
+        # Progress Bar and Buttons Section
+        progress_frame = Frame(main_frame)
+        progress_frame.grid(row=6, column=0, sticky="ew", padx=5, pady=5)
+        progress_frame.columnconfigure(0, weight=1)
+
         progress_bar = ttk.Progressbar(
-            root,
+            progress_frame,
             orient="horizontal",
             mode="determinate",
             variable=progress_var,
         )
-        progress_bar.grid(row=4, column=0, sticky="ew", padx=5, pady=10)
-        root.columnconfigure(0, weight=1)  # Make progress bar expand
+        progress_bar.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
 
-        # Progress Label
-        progress_label = Label(root, text="0%")
-        progress_label.grid(row=5, column=0, sticky="w", padx=5, pady=5)
+        progress_label = Label(progress_frame, text="0%")
+        progress_label.grid(row=0, column=1, sticky="w", padx=5, pady=5)
 
-        # Run Button
-        global split_button
+        button_frame = Frame(main_frame)
+        button_frame.grid(row=7, column=0, sticky="ew", padx=5, pady=5)
+        button_frame.columnconfigure(0, weight=1)
+        button_frame.columnconfigure(1, weight=1)
+
         split_button = Button(
-            root, text="Split Audio Files", command=lambda: run_splitter(message_queue)
+            button_frame, text="Split Audio Files", command=lambda: run_splitter(message_queue)
         )
-        split_button.grid(row=6, column=0, pady=10)
+        split_button.grid(row=0, column=0, pady=5, padx=5)
 
-        # Open Output Directory Button
-        global open_output_button
         open_output_button = Button(
-            root,
+            button_frame,
             text="Open Output Directory",
             command=lambda: open_output_directory(output_dir_var.get()),
             state="disabled",
         )
-        open_output_button.grid(row=7, column=0, pady=10)
+        open_output_button.grid(row=0, column=1, pady=5, padx=5)
 
         def process_queue():
             try:
