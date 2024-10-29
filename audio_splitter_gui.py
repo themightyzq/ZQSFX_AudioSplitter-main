@@ -499,9 +499,8 @@ def main():
 
         root = TkinterDnD.Tk()
         root.title("ZQ SFX Audio Splitter")
-        root.geometry("800x600")  # Set a default size
-        root.minsize(800, 600)  # Set a minimum size
-        root.maxsize(1200, 800)  # Set a maximum size
+        root.geometry("800x700")  # Set a default size
+        root.minsize(800, 700)  # Set a minimum size
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
 
@@ -509,6 +508,10 @@ def main():
         main_frame.grid(sticky="nsew")
         main_frame.columnconfigure(0, weight=1)
         main_frame.rowconfigure(0, weight=1)
+
+        content_frame = Frame(main_frame)
+        content_frame.grid(sticky="nsew", padx=5, pady=5)
+        content_frame.columnconfigure(0, weight=1)
 
         naming_scheme_var = StringVar(value="default")
         custom_names_var = StringVar(value="L,R,C,lfe,Ls,Rs,Lss,Rss")
@@ -527,53 +530,54 @@ def main():
 
         root.protocol("WM_DELETE_WINDOW", lambda: on_closing(root, message_queue))
 
-        # Header Section
-        header_frame = Frame(main_frame)
-        header_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
-        Label(header_frame, text="ZQ SFX Audio Splitter", font=("Helvetica", 16, "bold")).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        # Set the font to Lato and increase the size for accessibility
+        font_family = "Lato"
+        font_size = 14
 
-        # Split Single File Section
-        single_file_frame = LabelFrame(main_frame, text="Split Single File", font=("Helvetica", 12, "bold"))
-        single_file_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
-        single_file_frame.columnconfigure(1, weight=1)
+        # Single File Split Section
+        single_file_frame = LabelFrame(content_frame, text="Single File Split", font=(font_family, font_size, "bold"))
+        single_file_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        single_file_frame.columnconfigure(0, weight=1)
 
-        # Placeholder for Split Single File section
-        Label(single_file_frame, text="Placeholder for Split Single File section").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        # Placeholder for Single File Split section
+        Label(single_file_frame, text="Placeholder for Single File Split section", font=(font_family, font_size)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
 
-        # Input Directory Section
-        input_section_frame = LabelFrame(main_frame, text="Split Multiple Files", font=("Helvetica", 12, "bold"))
-        input_section_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
-        input_section_frame.columnconfigure(1, weight=1)
+        # Batch File Split Section
+        input_section_frame = LabelFrame(content_frame, text="Batch File Split", font=(font_family, font_size, "bold"))
+        input_section_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+        input_section_frame.columnconfigure(0, weight=1)
 
-        Label(input_section_frame, text="Input Directory:", width=15, anchor='w').grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        input_dir_entry = Entry(input_section_frame, textvariable=input_dir_var)
-        input_dir_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+        Label(input_section_frame, text="Input Directory:", width=15, anchor='w', font=(font_family, font_size)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        input_dir_entry = Entry(input_section_frame, textvariable=input_dir_var, font=(font_family, font_size))
+        input_dir_entry.grid(row=0, column=1, sticky="w", padx=(0, 5), pady=5)  # Adjust padding to remove extra space
         input_dir_entry.drop_target_register(DND_FILES)
         input_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, input_dir_var, message_queue))
-        Button(input_section_frame, text="Browse...", command=lambda: browse_input_dir(message_queue)).grid(row=0, column=2, padx=5, pady=5)
-        Label(input_section_frame, textvariable=file_count_var, font=("Helvetica", 10, "italic")).grid(row=1, column=1, sticky="w", padx=5, pady=5)
+        Button(input_section_frame, text="Browse...", command=lambda: browse_input_dir(message_queue), font=(font_family, font_size)).grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        Label(input_section_frame, textvariable=file_count_var, font=(font_family, font_size, "italic")).grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
-        # Output Directory Section
-        output_section_frame = LabelFrame(main_frame, text="Output Location", font=("Helvetica", 12, "bold"))
-        output_section_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
-        output_section_frame.columnconfigure(1, weight=1)
+        # Split File Location Section
+        output_section_frame = LabelFrame(content_frame, text="Split File Location", font=(font_family, font_size, "bold"))
+        output_section_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
+        output_section_frame.columnconfigure(0, weight=1)
 
-        Label(output_section_frame, text="Output Directory:", width=15, anchor='w').grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        output_dir_entry = Entry(output_section_frame, textvariable=output_dir_var)
-        output_dir_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+        Label(output_section_frame, text="Output Directory:", width=15, anchor='w', font=(font_family, font_size)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        output_dir_entry = Entry(output_section_frame, textvariable=output_dir_var, font=(font_family, font_size))
+        output_dir_entry.grid(row=0, column=1, sticky="w", padx=(0, 5), pady=5)  # Adjust padding to remove extra space
         output_dir_entry.drop_target_register(DND_FILES)
         output_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, output_dir_var, message_queue))
-        Button(output_section_frame, text="Browse...", command=lambda: browse_output_dir(message_queue)).grid(row=0, column=2, padx=5, pady=5)
+        Button(output_section_frame, text="Browse...", command=lambda: browse_output_dir(message_queue), font=(font_family, font_size)).grid(row=0, column=2, sticky="w", padx=5, pady=5)
 
         # Override Options Section
-        override_frame = LabelFrame(main_frame, text="Override Options", font=("Helvetica", 12, "bold"))
-        override_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=5)
+        override_frame = LabelFrame(content_frame, text="Override Options", font=(font_family, font_size, "bold"))
+        override_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
+        override_frame.columnconfigure(0, weight=1)
 
         Checkbutton(
             override_frame,
             text="Override Sample Rate",
             variable=override_sample_rate_var,
-            command=toggle_sample_rate_dropdown
+            command=toggle_sample_rate_dropdown,
+            font=(font_family, font_size)
         ).grid(row=0, column=0, sticky="w", padx=5, pady=5)
 
         sample_rate_dropdown = ttk.Combobox(
@@ -581,15 +585,17 @@ def main():
             textvariable=sample_rate_var,
             values=["11025 Hz", "22050 Hz", "44100 Hz", "48000 Hz", "96000 Hz"],
             state="disabled",
-            width=15
+            width=15,
+            font=(font_family, font_size)
         )
-        sample_rate_dropdown.grid(row=0, column=1, padx=5, pady=5)
+        sample_rate_dropdown.grid(row=0, column=1, sticky="w", padx=5, pady=5)
 
         Checkbutton(
             override_frame,
             text="Override Bit Depth",
             variable=override_bit_depth_var,
-            command=toggle_bit_depth_dropdown
+            command=toggle_bit_depth_dropdown,
+            font=(font_family, font_size)
         ).grid(row=1, column=0, sticky="w", padx=5, pady=5)
 
         bit_depth_dropdown = ttk.Combobox(
@@ -597,49 +603,52 @@ def main():
             textvariable=bit_depth_var,
             values=["8 bit", "16 bit", "24 bit", "32 bit"],
             state="disabled",
-            width=15
+            width=15,
+            font=(font_family, font_size)
         )
-        bit_depth_dropdown.grid(row=1, column=1, padx=5, pady=5)
+        bit_depth_dropdown.grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
         # Ensure the columns do not expand
         for col in range(2):
             override_frame.columnconfigure(col, weight=0)
 
         # Channel Selection and Naming Scheme Section
-        channel_naming_frame = Frame(main_frame)
-        channel_naming_frame.grid(row=5, column=0, sticky="ew", padx=5, pady=5)
+        channel_naming_frame = Frame(content_frame)
+        channel_naming_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=5)
         channel_naming_frame.columnconfigure(0, weight=1)
         channel_naming_frame.columnconfigure(1, weight=1)
 
-        channel_frame = LabelFrame(channel_naming_frame, text="Channel Selection", font=("Helvetica", 12, "bold"))
+        channel_frame = LabelFrame(channel_naming_frame, text="Channel Selection", font=(font_family, font_size, "bold"))
         channel_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         channel_frame.columnconfigure(0, weight=1)
 
-        Label(channel_frame, text="Select Channels to Process:").grid(row=0, column=0, columnspan=4, sticky="w", padx=5, pady=5)
+        Label(channel_frame, text="Select Channels to Process:", font=(font_family, font_size)).grid(row=0, column=0, columnspan=4, sticky="w", padx=5, pady=5)
 
         # Lock the positions of the channel buttons
         for idx in range(8):
             Checkbutton(
                 channel_frame,
                 text=f"Channel {idx + 1}",
-                variable=channel_vars[idx]
+                variable=channel_vars[idx],
+                font=(font_family, font_size)
             ).grid(row=1 + idx // 4, column=idx % 4, sticky="w", padx=5, pady=2)
 
         # Ensure the columns do not expand
         for col in range(4):
             channel_frame.columnconfigure(col, weight=0)
 
-        naming_scheme_frame = LabelFrame(channel_naming_frame, text="Channel Name", font=("Helvetica", 12, "bold"))
+        naming_scheme_frame = LabelFrame(channel_naming_frame, text="Channel Naming", font=(font_family, font_size, "bold"))
         naming_scheme_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
         naming_scheme_frame.columnconfigure(0, weight=1)
 
-        Label(naming_scheme_frame, text="Naming Scheme:").grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=5)
+        Label(naming_scheme_frame, text="Naming Scheme:", font=(font_family, font_size)).grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=5)
 
         default_naming_radio = Radiobutton(
             naming_scheme_frame,
             text="Default (chan1, chan2, ...)",
             variable=naming_scheme_var,
-            value="default"
+            value="default",
+            font=(font_family, font_size)
         )
         default_naming_radio.grid(row=1, column=0, sticky="w", padx=5, pady=5)
 
@@ -647,11 +656,12 @@ def main():
             naming_scheme_frame,
             text="Custom",
             variable=naming_scheme_var,
-            value="custom"
+            value="custom",
+            font=(font_family, font_size)
         )
         custom_naming_radio.grid(row=2, column=0, sticky="w", padx=5, pady=5)
 
-        custom_names_entry = Entry(naming_scheme_frame, textvariable=custom_names_var, state="disabled")
+        custom_names_entry = Entry(naming_scheme_frame, textvariable=custom_names_var, state="disabled", font=(font_family, font_size))
         custom_names_entry.grid(row=3, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
 
         def toggle_custom_names_entry():
@@ -663,8 +673,8 @@ def main():
         naming_scheme_var.trace("w", lambda *args: toggle_custom_names_entry())
 
         # Progress Bar and Buttons Section
-        progress_frame = Frame(main_frame)
-        progress_frame.grid(row=6, column=0, sticky="ew", padx=5, pady=5)
+        progress_frame = Frame(content_frame)
+        progress_frame.grid(row=5, column=0, sticky="ew", padx=5, pady=5)
         progress_frame.columnconfigure(0, weight=1)
 
         progress_bar = ttk.Progressbar(
@@ -675,16 +685,16 @@ def main():
         )
         progress_bar.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
 
-        progress_label = Label(progress_frame, text="0%")
+        progress_label = Label(progress_frame, text="0%", font=(font_family, font_size))
         progress_label.grid(row=0, column=1, sticky="w", padx=5, pady=5)
 
-        button_frame = Frame(main_frame)
-        button_frame.grid(row=7, column=0, sticky="ew", padx=5, pady=5)
+        button_frame = Frame(content_frame)
+        button_frame.grid(row=6, column=0, sticky="ew", padx=5, pady=5)
         button_frame.columnconfigure(0, weight=1)
         button_frame.columnconfigure(1, weight=1)
 
         split_button = Button(
-            button_frame, text="Split Audio Files", command=lambda: run_splitter(message_queue)
+            button_frame, text="Split Audio Files", command=lambda: run_splitter(message_queue), font=(font_family, font_size)
         )
         split_button.grid(row=0, column=0, pady=5, padx=5)
 
@@ -693,6 +703,7 @@ def main():
             text="Open Output Directory",
             command=lambda: open_output_directory(output_dir_var.get()),
             state="disabled",
+            font=(font_family, font_size)
         )
         open_output_button.grid(row=0, column=1, pady=5, padx=5)
 
