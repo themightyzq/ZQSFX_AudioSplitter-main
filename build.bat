@@ -58,4 +58,18 @@ REM Step 6: Run PyInstaller with --onefile
 echo Running PyInstaller...
 pyinstaller --onefile --windowed --name "%APP_NAME%" audio_splitter_gui.py ^
 --add-binary "ffmpeg\ffmpeg.exe;ffmpeg" ^
---add-binary "
+--add-binary "ffmpeg\ffprobe.exe;ffmpeg" ^
+--add-data "tkdnd;tkdnd" ^
+--hidden-import=pydub.utils ^
+--hidden-import=pydub ^
+--hidden-import=numpy ^
+--hidden-import=tkinter ^
+--log-level=DEBUG
+
+IF %ERRORLEVEL% EQU 0 (
+    echo Build process completed successfully.
+) ELSE (
+    echo Build process failed.
+)
+
+pause
