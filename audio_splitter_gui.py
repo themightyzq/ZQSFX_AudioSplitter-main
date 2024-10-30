@@ -341,7 +341,7 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
 
         progress_var.set(100)
         progress_bar["value"] = 100
-        message_queue.put(("progress", "Progress", "100%"))
+        message_queue.put(("progress", None, "100%"))
         progress_bar.update_idletasks()
 
         summary = f"Processed {processed_files} out of {len(wav_files)} files.\n"
@@ -356,6 +356,9 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
         logger.error(f"An unexpected error occurred in split_audio_files: {e}")
         logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"An unexpected error occurred:\n{e}"))
+    finally:
+        # Ensure buttons are re-enabled after processing
+        message_queue.put(("enable_buttons", None, None))
 
 def browse_input_dir(message_queue):
     global last_input_dir
@@ -397,6 +400,9 @@ def update_file_count():
         file_count_var.set("Files to process: 0")
 
 def run_splitter(message_queue):
+    # Disable the split button
+    split_button.config(state="disabled")
+    open_output_button.config(state="disabled")
     logger.debug("run_splitter function called.")
     try:
         input_dir = input_dir_var.get()
@@ -487,8 +493,136 @@ def on_closing(root, message_queue):
     logger.info("Configuration saved. Exiting application.")
     root.destroy()
 
+def handle_single_file_drop(event, file_var, message_queue):
+    try:
+        # Extract the dropped path
+        dropped_path = event.data.strip('{}')
+        logger.debug(f"Dropped path: {dropped_path}")
+
+        # Check if the dropped path is a file
+        if os.path.isfile(dropped_path):
+            file_var.set(dropped_path)
+            logger.debug(f"File set via drag-and-drop: {dropped_path}")
+        else:
+            logger.error(f"Dropped item is not a file: {dropped_path}")
+            message_queue.put(("error", "Error", "Dropped item is not a file."))
+    except Exception as e:
+        logger.error(f"Error handling drag-and-drop: {e}")
+        logger.debug(traceback.format_exc())
+        message_queue.put(("error", "Error", f"Error handling drag-and-drop: {e}"))
+
+def browse_single_file(message_queue):
+    try:
+        file_path = filedialog.askopenfilename(filetypes=[("Audio Files", "*.wav")])
+        if file_path:
+            single_file_var.set(file_path)
+            logger.debug(f"Selected file: {file_path}")
+    except Exception as e:
+        logger.error(f"Error selecting file: {e}")
+        logger.debug(traceback.format_exc())
+        message_queue.put(("error", "Error", f"Error selecting file: {e}"))
+
+def split_single_file(message_queue):
+    # Disable the split button
+    split_single_file_button.config(state="disabled")
+    open_output_button.config(state="disabled")
+    try:
+        logger.debug("split_single_file function called.")
+        file_path = single_file_var.get()
+        output_dir = output_dir_var.get()
+        logger.debug(f"File to Split: {file_path}")
+        logger.debug(f"Output Directory: {output_dir}")
+
+        if not file_path or not output_dir:
+            logger.error("File or output directory not selected.")
+            message_queue.put(("error", "Error", "Please select both a file and an output directory."))
+            return
+
+        # Ensure the output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Load the audio file
+        audio = AudioSegment.from_file(file_path)
+        logger.debug(f"Loaded audio file '{file_path}' successfully.")
+
+        # Split the audio into mono channels
+        channels = audio.split_to_mono()
+        logger.debug(f"Split audio into {len(channels)} mono channel(s).")
+
+        # Get the base name of the file without extension
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+
+        # Get naming scheme
+        if naming_scheme_var.get() == "custom":
+            custom_names = custom_names_var.get().split(',')
+            if len(custom_names) < len(channels):
+                logger.error("Not enough custom names provided for the number of channels.")
+                message_queue.put(("error", "Error", "Not enough custom names provided for the number of channels."))
+                return
+        else:
+            custom_names = [f"chan{idx+1}" for idx in range(len(channels))]
+
+        # Get selected channels
+        selected_channels = [idx for idx, var in enumerate(channel_vars) if var.get()]
+        logger.debug(f"Selected channels: {selected_channels}")
+
+        if not selected_channels:
+            logger.error("No channels selected for processing.")
+            message_queue.put(("error", "Error", "Please select at least one channel to process."))
+            return
+
+        # Update progress bar parameters
+        total_steps = len(selected_channels)
+        progress_var.set(0)
+        progress_bar.config(maximum=total_steps)
+
+        # Export each selected channel to a separate file
+        for step, idx in enumerate(selected_channels, start=1):
+            if idx < len(channels):
+                channel = channels[idx]
+                output_filename = f"{base_name}_{custom_names[idx].strip()}.wav"
+                output_file = os.path.join(output_dir, output_filename)
+
+                # Apply overrides if any
+                if override_sample_rate_var.get():
+                    sample_rate = int(sample_rate_var.get().split(' ')[0])
+                    channel = channel.set_frame_rate(sample_rate)
+                if override_bit_depth_var.get():
+                    # pydub does not directly set bit depth, but we can set sample width
+                    bit_depth = int(bit_depth_var.get().split(' ')[0])
+                    sample_width = bit_depth // 8
+                    channel = channel.set_sample_width(sample_width)
+
+                channel.export(output_file, format="wav")
+                logger.info(f"Exported: {output_file}")
+
+                # Update progress
+                progress_var.set(step)
+                progress_percentage = int((step / total_steps) * 100)
+                message_queue.put(("progress", None, f"{progress_percentage}%"))
+            else:
+                logger.warning(f"Channel index {idx} is out of range for the input file.")
+
+        # After processing is complete, reset the progress bar
+        progress_var.set(100)
+        progress_bar["value"] = 100
+        message_queue.put(("progress", None, "100%"))
+
+        message_queue.put(
+            ("info", "Splitting Complete", f"Splitting of file '{file_path}' completed.")
+        )
+    except Exception as e:
+        logger.error(f"Error in split_single_file: {e}")
+        logger.debug(traceback.format_exc())
+        message_queue.put(("error", "Error", f"An unexpected error occurred:\n{e}"))
+    finally:
+        # Re-enable the split button after processing
+        split_single_file_button.config(state="normal")
+        open_output_button.config(state="normal")
+
 def main():
     try:
+        global split_single_file_button
         load_config()
 
         global last_input_dir, last_output_dir
@@ -496,11 +630,12 @@ def main():
         global override_sample_rate_var, sample_rate_var, override_bit_depth_var, bit_depth_var, channel_vars
         global progress_var, progress_bar, split_button, open_output_button
         global sample_rate_dropdown, bit_depth_dropdown
+        global single_file_var, single_file_entry
 
         root = TkinterDnD.Tk()
         root.title("ZQ SFX Audio Splitter")
-        root.geometry("800x700")  # Set a default size
-        root.minsize(800, 700)  # Set a minimum size
+        root.geometry("800x700")  # Set a fixed size
+        root.resizable(False, False)  # Disable resizing
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
 
@@ -518,13 +653,14 @@ def main():
         input_dir_var = StringVar(value=last_input_dir)
         file_count_var = StringVar()
         file_count_var.set("Files to process: 0")
-        output_dir_var = StringVar(value=last_output_dir)
+        output_dir_var = StringVar(value="")
         override_sample_rate_var = BooleanVar()
         sample_rate_var = StringVar(value="48000 Hz")
         override_bit_depth_var = BooleanVar()
         bit_depth_var = StringVar(value="16 bit")
         channel_vars = [BooleanVar(value=True) for _ in range(8)]
         progress_var = IntVar()
+        single_file_var = StringVar()
 
         message_queue = queue.Queue()
 
@@ -538,34 +674,68 @@ def main():
         single_file_frame = LabelFrame(content_frame, text="Single File Split", font=(font_family, font_size, "bold"))
         single_file_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         single_file_frame.columnconfigure(0, weight=1)
+        single_file_frame.columnconfigure(1, weight=3)  # Increase weight to make the field longer
+        single_file_frame.columnconfigure(2, weight=0)
 
-        # Placeholder for Single File Split section
-        Label(single_file_frame, text="Placeholder for Single File Split section", font=(font_family, font_size)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        Label(single_file_frame, text="File to Split:", width=15, anchor='w', font=(font_family, font_size)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        single_file_entry = Entry(single_file_frame, textvariable=single_file_var, font=(font_family, font_size))
+        single_file_entry.grid(row=0, column=1, sticky="ew", padx=(0, 5), pady=5)
+        single_file_entry.drop_target_register(DND_FILES)
+        single_file_entry.dnd_bind('<<Drop>>', lambda event: handle_single_file_drop(event, single_file_var, message_queue))
+        Button(single_file_frame, text="Browse...", command=lambda: browse_single_file(message_queue), font=(font_family, font_size)).grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        split_single_file_button = Button(
+            single_file_frame,
+            text="Split Single File",
+            command=lambda: split_single_file(message_queue),
+            font=(font_family, font_size)
+        )
+        split_single_file_button.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
 
         # Batch File Split Section
         input_section_frame = LabelFrame(content_frame, text="Batch File Split", font=(font_family, font_size, "bold"))
         input_section_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
         input_section_frame.columnconfigure(0, weight=1)
+        input_section_frame.columnconfigure(1, weight=3)  # Increase weight to make the field longer
+        input_section_frame.columnconfigure(2, weight=0)
 
         Label(input_section_frame, text="Input Directory:", width=15, anchor='w', font=(font_family, font_size)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
         input_dir_entry = Entry(input_section_frame, textvariable=input_dir_var, font=(font_family, font_size))
-        input_dir_entry.grid(row=0, column=1, sticky="w", padx=(0, 5), pady=5)  # Adjust padding to remove extra space
+        input_dir_entry.grid(row=0, column=1, sticky="ew", padx=(0, 5), pady=5)
         input_dir_entry.drop_target_register(DND_FILES)
         input_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, input_dir_var, message_queue))
         Button(input_section_frame, text="Browse...", command=lambda: browse_input_dir(message_queue), font=(font_family, font_size)).grid(row=0, column=2, sticky="w", padx=5, pady=5)
         Label(input_section_frame, textvariable=file_count_var, font=(font_family, font_size, "italic")).grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
+        split_button = Button(
+            input_section_frame,
+            text="Split Multiple Files",
+            command=lambda: run_splitter(message_queue),
+            font=(font_family, font_size)
+        )
+        split_button.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
+
         # Split File Location Section
         output_section_frame = LabelFrame(content_frame, text="Split File Location", font=(font_family, font_size, "bold"))
         output_section_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
         output_section_frame.columnconfigure(0, weight=1)
+        output_section_frame.columnconfigure(1, weight=3)  # Increase weight to make the field longer
+        output_section_frame.columnconfigure(2, weight=0)
 
         Label(output_section_frame, text="Output Directory:", width=15, anchor='w', font=(font_family, font_size)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
         output_dir_entry = Entry(output_section_frame, textvariable=output_dir_var, font=(font_family, font_size))
-        output_dir_entry.grid(row=0, column=1, sticky="w", padx=(0, 5), pady=5)  # Adjust padding to remove extra space
+        output_dir_entry.grid(row=0, column=1, sticky="ew", padx=(0, 5), pady=5)
         output_dir_entry.drop_target_register(DND_FILES)
         output_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, output_dir_var, message_queue))
         Button(output_section_frame, text="Browse...", command=lambda: browse_output_dir(message_queue), font=(font_family, font_size)).grid(row=0, column=2, sticky="w", padx=5, pady=5)
+
+        open_output_button = Button(
+            output_section_frame,
+            text="Open Output Directory",
+            command=lambda: open_output_directory(output_dir_var.get()),
+            state="disabled",
+            font=(font_family, font_size)
+        )
+        open_output_button.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
 
         # Override Options Section
         override_frame = LabelFrame(content_frame, text="Override Options", font=(font_family, font_size, "bold"))
@@ -624,12 +794,13 @@ def main():
 
         Label(channel_frame, text="Select Channels to Process:", font=(font_family, font_size)).grid(row=0, column=0, columnspan=4, sticky="w", padx=5, pady=5)
 
-        # Lock the positions of the channel buttons
-        for idx in range(8):
+        # Rearrange the channel buttons to be in the order 1357 and 2468
+        channel_order = [0, 2, 4, 6, 1, 3, 5, 7]
+        for idx, channel_idx in enumerate(channel_order):
             Checkbutton(
                 channel_frame,
-                text=f"Channel {idx + 1}",
-                variable=channel_vars[idx],
+                text=f"Channel {channel_idx + 1}",
+                variable=channel_vars[channel_idx],
                 font=(font_family, font_size)
             ).grid(row=1 + idx // 4, column=idx % 4, sticky="w", padx=5, pady=2)
 
@@ -682,30 +853,16 @@ def main():
             orient="horizontal",
             mode="determinate",
             variable=progress_var,
+            style="Custom.Horizontal.TProgressbar"  # Apply the custom style
         )
-        progress_bar.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        progress_bar.grid(row=0, column=0, sticky="ew", padx=5, pady=10)  # Increase pady for spacing
 
-        progress_label = Label(progress_frame, text="0%", font=(font_family, font_size))
+        progress_label = Label(
+            progress_frame,
+            text="0%",
+            font=(font_family, font_size + 2, "bold")  # Increase font size and make it bold
+        )
         progress_label.grid(row=0, column=1, sticky="w", padx=5, pady=5)
-
-        button_frame = Frame(content_frame)
-        button_frame.grid(row=6, column=0, sticky="ew", padx=5, pady=5)
-        button_frame.columnconfigure(0, weight=1)
-        button_frame.columnconfigure(1, weight=1)
-
-        split_button = Button(
-            button_frame, text="Split Audio Files", command=lambda: run_splitter(message_queue), font=(font_family, font_size)
-        )
-        split_button.grid(row=0, column=0, pady=5, padx=5)
-
-        open_output_button = Button(
-            button_frame,
-            text="Open Output Directory",
-            command=lambda: open_output_directory(output_dir_var.get()),
-            state="disabled",
-            font=(font_family, font_size)
-        )
-        open_output_button.grid(row=0, column=1, pady=5, padx=5)
 
         def process_queue():
             try:
@@ -715,11 +872,18 @@ def main():
                         messagebox.showinfo(title, message)
                         open_output_button.config(state="normal")
                         split_button.config(state="normal")
+                        split_single_file_button.config(state="normal")
                     elif msg_type == "error":
                         messagebox.showerror(title, message)
                         split_button.config(state="normal")
+                        split_single_file_button.config(state="normal")
                     elif msg_type == "progress":
                         progress_label.config(text=message)
+                        progress_bar["value"] = progress_var.get()  # Update the progress bar value
+                    elif msg_type == "enable_buttons":
+                        split_button.config(state="normal")
+                        split_single_file_button.config(state="normal")
+                        open_output_button.config(state="normal")
             except queue.Empty:
                 pass
             root.after(100, process_queue)
@@ -734,7 +898,7 @@ def main():
         root.mainloop()
 
     except Exception as e:
-        logger.error("An unexpected error occurred in main:")
+        logger.error(f"An unexpected error occurred in main: {e}")
         logger.error(traceback.format_exc())
         messagebox.showerror("Error", f"An unexpected error occurred:\n{e}")
         sys.exit(1)
