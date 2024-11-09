@@ -305,7 +305,7 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
             logger.debug(f"Total channels in '{wav_file}': {total_channels}")
 
             # Process all channels
-            selected_channels = list(range(total_channels))
+            selected_channels = list(range(1, total_channels + 1))
 
             for channel_idx, channel in enumerate(channels):
                 channel_number = channel_idx + 1
@@ -752,18 +752,28 @@ def main():
 
         root = TkinterDnD.Tk()
         root.title("ZQ SFX Audio Splitter")
-        # Allow window resizing
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
 
-        main_frame = Frame(root)
-        main_frame.grid(sticky="nsew")
-        main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(0, weight=1)
+        # **Set the font before using it**
+        font_family = "Lato"
+        font_size = 14
 
-        content_frame = Frame(main_frame)
-        content_frame.grid(sticky="nsew", padx=5, pady=5)
-        content_frame.columnconfigure(0, weight=1)
+        # Create Notebook
+        notebook = ttk.Notebook(root)
+        notebook.pack(fill='both', expand=True)
+
+        # Create frames for tabs in the new order
+        single_file_tab = Frame(notebook)
+        batch_tab = Frame(notebook)
+
+        # Add tabs to notebook in the new order
+        notebook.add(single_file_tab, text='Split Single File')
+        notebook.add(batch_tab, text='Batch Split')
+
+        # Output Section (common to both tabs)
+        output_section_frame = LabelFrame(root, text="Split File Location", font=(font_family, font_size, "bold"))
+        output_section_frame.pack(fill='x', padx=5, pady=5)
 
         naming_scheme_var = StringVar(value="default")
         custom_names_var = StringVar(value="L,R,C,lfe,Ls,Rs,Lss,Rss")
@@ -801,8 +811,7 @@ def main():
         )
 
         # Output Section (Split File Location) moved above split sections
-        output_section_frame = LabelFrame(content_frame, text="Split File Location", font=(font_family, font_size, "bold"))
-        output_section_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        #output_section_frame = LabelFrame(root, text="Split File Location", font=(font_family, font_size, "bold"))        output_section_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         output_section_frame.columnconfigure(0, weight=1)
         output_section_frame.columnconfigure(1, weight=3)  # Increase weight to make the field longer
         output_section_frame.columnconfigure(2, weight=0)
@@ -824,7 +833,8 @@ def main():
         open_output_button.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
 
         # Single File Split Section
-        single_file_frame = LabelFrame(content_frame, text="Single File Split", font=(font_family, font_size, "bold"))
+        single_file_tab.columnconfigure(0, weight=1)
+        single_file_frame = LabelFrame(single_file_tab, text="Single File Split", font=(font_family, font_size, "bold"))
         single_file_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
         single_file_frame.columnconfigure(0, weight=1)
         single_file_frame.columnconfigure(1, weight=3)  # Increase weight to make the field longer
@@ -872,7 +882,8 @@ def main():
             channel_frame.columnconfigure(col, weight=0)
 
         # Batch File Split Section
-        input_section_frame = LabelFrame(content_frame, text="Batch File Split", font=(font_family, font_size, "bold"))
+        batch_tab.columnconfigure(0, weight=1)
+        input_section_frame = LabelFrame(batch_tab, text="Batch File Split", font=(font_family, font_size, "bold"))
         input_section_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
         input_section_frame.columnconfigure(0, weight=1)
         input_section_frame.columnconfigure(1, weight=3)  # Increase weight to make the field longer
@@ -896,8 +907,8 @@ def main():
         split_button.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
 
         # Options Section (Container Frame)
-        options_frame = Frame(content_frame)
-        options_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
+        options_frame = Frame(root)
+        options_frame.pack(fill='x', padx=5, pady=5)
         options_frame.columnconfigure(0, weight=1)
         options_frame.columnconfigure(1, weight=1)
 
@@ -990,8 +1001,8 @@ def main():
             naming_scheme_frame.columnconfigure(col, weight=0)
 
         # Progress Bar and Buttons Section
-        progress_frame = Frame(content_frame)
-        progress_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=5)
+        progress_frame = Frame(root)
+        progress_frame.pack(fill='x', padx=5, pady=5)
         progress_frame.columnconfigure(0, weight=1)
 
         progress_bar = ttk.Progressbar(
