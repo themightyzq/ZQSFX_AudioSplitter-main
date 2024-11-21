@@ -31,7 +31,6 @@ def toggle_bit_depth_dropdown():
 
 def get_application_root():
     if getattr(sys, 'frozen', False):
-        # If the application is frozen, return the temporary folder where it's extracted
         app_root = sys._MEIPASS
     else:
         app_root = os.path.dirname(os.path.abspath(__file__))
@@ -73,11 +72,9 @@ def setup_logging():
 
 def handle_drop(event, dir_var, message_queue):
     try:
-        # Extract the dropped path
         dropped_path = event.data.strip('{}')
         logger.debug(f"Dropped path: {dropped_path}")
 
-        # Check if the dropped path is a directory
         if os.path.isdir(dropped_path):
             dir_var.set(dropped_path)
             logger.debug(f"Directory set via drag-and-drop: {dropped_path}")
@@ -107,11 +104,9 @@ def get_ffmpeg_paths():
         ffmpeg_filename = "ffmpeg"
         ffprobe_filename = "ffprobe"
 
-    # Paths to ffmpeg and ffprobe in the 'ffmpeg' subdirectory
     ffmpeg_path = os.path.join(app_root, 'ffmpeg', ffmpeg_filename)
     ffprobe_path = os.path.join(app_root, 'ffmpeg', ffprobe_filename)
 
-    # Check if FFmpeg binaries exist in the subdirectory
     if not os.path.exists(ffmpeg_path):
         logger.debug(f"FFmpeg not found in '{ffmpeg_path}'. Searching in system PATH.")
         ffmpeg_path = which("ffmpeg")
@@ -193,12 +188,10 @@ def get_metadata(file_path, ffprobe_path):
 
 ffmpeg_path, ffprobe_path = get_ffmpeg_paths()
 
-# Set AudioSegment converter and ffprobe
 AudioSegment.converter = ffmpeg_path
 AudioSegment.ffprobe = ffprobe_path
 logger.debug(f"AudioSegment.ffprobe set to: {AudioSegment.ffprobe}")
 
-# **Add the ffmpeg directory to PATH**
 ffmpeg_dir = os.path.dirname(ffmpeg_path)
 if ffmpeg_dir not in os.environ["PATH"]:
     os.environ["PATH"] += os.pathsep + ffmpeg_dir
@@ -206,11 +199,9 @@ if ffmpeg_dir not in os.environ["PATH"]:
 
 def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_files, message_queue, ffprobe_path, override_sample_rate, override_bit_depth):
     try:
-        # Ensure ffprobe path is set within the thread
         AudioSegment.ffprobe = ffprobe_path
         logger.debug(f"AudioSegment.ffprobe within thread set to: {AudioSegment.ffprobe}")
 
-        # Ensure ffmpeg directory is in PATH within the thread
         ffmpeg_dir = os.path.dirname(ffprobe_path)
         if ffmpeg_dir not in os.environ["PATH"]:
             os.environ["PATH"] += os.pathsep + ffmpeg_dir
@@ -234,7 +225,6 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
         processed_files = 0
         error_files = 0
 
-        # Get naming scheme and custom names
         naming_scheme = naming_scheme_var.get()
         custom_names = custom_names_var.get().split(",") if naming_scheme == "custom" else []
 
@@ -249,11 +239,9 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
             progress_bar.update_idletasks()
 
             try:
-                # Set ffprobe path before loading each file
                 AudioSegment.ffprobe = ffprobe_path
                 logger.debug(f"AudioSegment.ffprobe before loading '{wav_file}': {AudioSegment.ffprobe}")
 
-                # Ensure ffmpeg directory is in PATH before loading each file
                 if ffmpeg_dir not in os.environ["PATH"]:
                     os.environ["PATH"] += os.pathsep + ffmpeg_dir
                     logger.debug(f"Before loading '{wav_file}': Updated PATH with ffmpeg directory: {ffmpeg_dir}")
@@ -291,7 +279,6 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
                 error_files += 1
                 continue
 
-            # Get the number of channels in the current file
             cmd = [
                 ffprobe_path,
                 "-v", "error",
@@ -304,7 +291,6 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
             total_channels = int(output)
             logger.debug(f"Total channels in '{wav_file}': {total_channels}")
 
-            # Process all channels
             selected_channels = list(range(1, total_channels + 1))
 
             for channel_idx, channel in enumerate(channels):
@@ -326,7 +312,7 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
 
                 base_name, _ = os.path.splitext(wav_file)
                 if naming_scheme == "custom" and channel_idx < len(custom_names):
-                    output_filename = f"{base_name}_{custom_names[channel_idx]}.wav"
+                    output_filename = f"{base_name}_{custom_names[channel_idx].strip()}.wav"
                 else:
                     output_filename = f"{base_name}_chan{channel_number}.wav"
                 output_file = os.path.join(output_dir, output_filename)
@@ -368,7 +354,6 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
         logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"An unexpected error occurred:\n{e}"))
     finally:
-        # Ensure buttons are re-enabled after processing
         message_queue.put(("enable_buttons", None, None))
 
 def browse_input_dir(message_queue):
@@ -409,9 +394,8 @@ def update_file_count():
         file_count_var.set("Files to process: 0")
 
 def run_splitter(message_queue):
-    # Disable the split button
     split_button.config(state="disabled")
-    open_output_button.config(state="disabled")
+    open_output_directory_button.config(state="disabled")
     logger.debug("run_splitter function called.")
     try:
         input_dir = input_dir_var.get()
@@ -432,18 +416,14 @@ def run_splitter(message_queue):
         wav_files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f)) and f.lower().endswith(".wav")]
         total_files = len(wav_files) if wav_files else 1
 
-        override_sample_rate = int(sample_rate_var.get()) if override_sample_rate_var.get() else None
-        override_bit_depth = int(bit_depth_var.get()) if override_bit_depth_var.get() else None
+        override_sample_rate = int(sample_rate_var.get().split()[0]) if override_sample_rate_var.get() else None
+        override_bit_depth = int(bit_depth_var.get().split()[0]) if override_bit_depth_var.get() else None
         selected_channels = [i+1 for i, var in enumerate(channel_vars) if var.get()]
 
         if not selected_channels:
             logger.warning("No channels selected. All channels will be processed by default.")
-            selected_channels = list(range(1, 9))  # Assuming max 8 channels
+            selected_channels = list(range(1, 9))
 
-        # For batch processing, process all channels by default
-        selected_channels = None  # We'll handle this in the splitting function
-
-        # Start the splitting process in a separate thread
         threading.Thread(
             target=split_audio_files,
             args=(
@@ -466,17 +446,31 @@ def run_splitter(message_queue):
 
 def open_output_directory(output_dir):
     try:
-        if os.name == "nt":  # For Windows
+        if os.name == "nt":
             os.startfile(output_dir)
-        elif sys.platform == "darwin":  # For macOS
+        elif sys.platform == "darwin":
             subprocess.Popen(["open", output_dir])
-        else:  # For Linux and other OS
+        else:
             subprocess.Popen(["xdg-open", output_dir])
         logger.debug(f"Opened output directory: {output_dir}")
     except Exception as e:
         logger.error(f"Failed to open output directory '{output_dir}': {e}")
         logger.debug(traceback.format_exc())
         messagebox.showerror("Error", f"Failed to open output directory:\n{e}")
+
+def open_file_directory(file_path):
+    directory = os.path.dirname(file_path)
+    if os.path.isdir(directory):
+        if os.name == "nt":
+            os.startfile(directory)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", directory])
+        else:
+            subprocess.Popen(["xdg-open", directory])
+        logger.debug(f"Opened directory containing file: {directory}")
+    else:
+        logger.error(f"Directory does not exist: {directory}")
+        messagebox.showerror("Error", f"Directory does not exist:\n{directory}")
 
 CONFIG_FILE = os.path.join(get_application_root(), "config.json")
 
@@ -492,7 +486,6 @@ def load_config():
         except Exception as e:
             logger.error(f"Error loading config: {e}")
             logger.debug(traceback.format_exc())
-    # Initialize last_output_dir if not set
     if not last_output_dir:
         last_output_dir = last_input_dir
 
@@ -513,15 +506,13 @@ def on_closing(root, message_queue):
 
 def handle_single_file_drop(event, file_var, message_queue):
     try:
-        # Extract the dropped path
         dropped_path = event.data.strip('{}')
         logger.debug(f"Dropped path: {dropped_path}")
 
-        # Check if the dropped path is a file
         if os.path.isfile(dropped_path):
             file_var.set(dropped_path)
             logger.debug(f"File set via drag-and-drop: {dropped_path}")
-            update_channel_checkboxes()  # Update the channel checkboxes
+            update_channel_checkboxes()
         else:
             logger.error(f"Dropped item is not a file: {dropped_path}")
             message_queue.put(("error", "Error", "Dropped item is not a file."))
@@ -542,7 +533,7 @@ def browse_single_file(message_queue):
             single_file_var.set(file_path)
             logger.debug(f"Selected file: {file_path}")
             last_dir = os.path.dirname(file_path)
-            update_channel_checkboxes()  # Update the channel checkboxes
+            update_channel_checkboxes()
     except Exception as e:
         logger.error(f"Error selecting file: {e}")
         logger.debug(traceback.format_exc())
@@ -564,7 +555,6 @@ def split_single_file(message_queue):
 
         os.makedirs(output_dir, exist_ok=True)
 
-        # Get the number of channels using ffprobe
         cmd = [
             ffprobe_path,
             "-v", "error",
@@ -577,15 +567,12 @@ def split_single_file(message_queue):
         total_channels = int(output)
         logger.debug(f"Total channels in input file: {total_channels}")
 
-        # Adjust the selected channels to only include existing channels
         selected_channels = [idx for idx, var in enumerate(channel_vars[:total_channels]) if var.get()]
         if not selected_channels:
             message_queue.put(("error", "Error", "Please select at least one valid channel to process."))
             return
 
-        # Determine override bit depth if selected
         if override_bit_depth_var.get():
-            # Extract integer from string like '16 bit'
             override_bit_depth = int(bit_depth_var.get().split()[0])
         else:
             override_bit_depth = None
@@ -593,12 +580,10 @@ def split_single_file(message_queue):
         progress_var.set(0)
         progress_bar.config(maximum=100)
 
-        # Run FFmpeg commands sequentially
         for idx in selected_channels:
             output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_chan{idx + 1}.wav"
             output_file = os.path.join(output_dir, output_filename)
             run_ffmpeg(file_path, idx, output_file, override_bit_depth)
-            # Update progress
             progress = int(((selected_channels.index(idx) + 1) / len(selected_channels)) * 100)
             progress_var.set(progress)
             message_queue.put(("progress", None, f"{progress}%"))
@@ -620,17 +605,14 @@ def split_single_file(message_queue):
         open_output_button.config(state="normal")
 
 def run_ffmpeg(file_path, channel_index, output_file, override_bit_depth=None):
-    # First, get the bits per sample of the input file
     bits_per_sample = get_bits_per_sample(file_path, ffprobe_path)
     if bits_per_sample is None:
         logger.error(f"Could not determine bit depth of '{file_path}'")
         return
 
-    # If override_bit_depth is set, use it
     if override_bit_depth:
         bits_per_sample = override_bit_depth
 
-    # Map bits per sample to codec
     codec_mapping = {8: "pcm_u8", 16: "pcm_s16le", 24: "pcm_s24le", 32: "pcm_s32le"}
     codec = codec_mapping.get(bits_per_sample)
     if codec is None:
@@ -639,7 +621,7 @@ def run_ffmpeg(file_path, channel_index, output_file, override_bit_depth=None):
 
     cmd = [
         ffmpeg_path,
-        "-y",  # Overwrite output files
+        "-y",
         "-i", file_path,
         "-af", f"pan=mono|c0=c{channel_index}",
         "-c:a", codec,
@@ -657,24 +639,26 @@ def add_placeholder(entry, placeholder_text):
     def on_focus_in(event):
         if entry.get() == placeholder_text:
             entry.delete(0, 'end')
-            entry.config(foreground='black')
+            entry.config(fg=FOREGROUND_COLOR)
     def on_focus_out(event):
         if not entry.get():
             entry.insert(0, placeholder_text)
-            entry.config(foreground='grey')
+            entry.config(fg=PLACEHOLDER_COLOR)
     entry.insert(0, placeholder_text)
-    entry.config(foreground='grey')
+    entry.config(fg=PLACEHOLDER_COLOR)
     entry.bind('<FocusIn>', on_focus_in)
     entry.bind('<FocusOut>', on_focus_out)
 
 class ToolTip:
-    def __init__(self, widget, text, font_family, font_size):
+    def __init__(self, widget, text, font_family="Segoe UI", font_size=12):
         self.widget = widget
         self.text = text
         self.tip_window = None
-        self.font = (font_family, font_size)
+        self.font_family = font_family
+        self.font_size = font_size
         widget.bind("<Enter>", self.show_tooltip)
         widget.bind("<Leave>", self.hide_tooltip)
+
     def show_tooltip(self, event):
         x = self.widget.winfo_rootx() + 20
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + 1
@@ -684,13 +668,14 @@ class ToolTip:
         label = Label(
             tw,
             text=self.text,
-            background="#333333",  # Dark grey background
-            foreground="white",    # White text for contrast
+            background=BACKGROUND_COLOR,
+            foreground=FOREGROUND_COLOR,
             relief="solid",
             borderwidth=1,
-            font=self.font
+            font=(self.font_family, self.font_size)
         )
         label.pack()
+
     def hide_tooltip(self, event):
         if self.tip_window:
             self.tip_window.destroy()
@@ -703,7 +688,6 @@ def update_channel_checkboxes():
         if not file_path or not os.path.isfile(file_path):
             return
 
-        # Get the number of channels using ffprobe
         cmd = [
             ffprobe_path,
             "-v", "error",
@@ -716,58 +700,63 @@ def update_channel_checkboxes():
         total_channels = int(output)
         logger.debug(f"Total channels in selected file: {total_channels}")
 
-        # Update the checkboxes using the actual channel indices
         for channel_idx, chk in channel_checkboxes:
             if channel_idx < total_channels:
                 chk.config(state='normal')
-                channel_vars[channel_idx].set(True)  # Select available channels by default
+                channel_vars[channel_idx].set(True)
             else:
                 chk.config(state='disabled')
-                channel_vars[channel_idx].set(False)  # Deselect and disable unavailable channels
+                channel_vars[channel_idx].set(False)
     except Exception as e:
         logger.error(f"Error updating channel checkboxes: {e}")
         logger.debug(traceback.format_exc())
 
 def set_minimum_window_size(root):
-    # Update idletasks to ensure all geometry changes are applied
     root.update_idletasks()
-    # Get the current window size
     width = root.winfo_width()
     height = root.winfo_height()
-    # Set the minimum size
     root.minsize(width, height)
     logger.debug(f"Set minimum window size to {width}x{height}")
 
+FONT_FAMILY = "Segoe UI"
+FONT_SIZE = 12
+
+FOREGROUND_COLOR = "#FFFFFF"
+BACKGROUND_COLOR = "#2C2C2C"
+PLACEHOLDER_COLOR = "#A9A9A9"
+
+# Define button widths
+browse_button_width = 10
+open_button_width = 5
+
 def main():
-    global split_single_file_button, channel_checkboxes
+    global split_single_file_button, open_output_button, open_input_file_button
+    global split_button, open_output_directory_button, open_input_directory_button
     try:
         load_config()
 
         global last_input_dir, last_output_dir
         global naming_scheme_var, custom_names_var, input_dir_var, file_count_var, output_dir_var
         global override_sample_rate_var, sample_rate_var, override_bit_depth_var, bit_depth_var, channel_vars
-        global progress_var, progress_bar, split_button, open_output_button
+        global progress_var, progress_bar, split_button, open_output_button, open_output_directory_button
         global sample_rate_dropdown, bit_depth_dropdown
         global single_file_var, single_file_entry
 
         root = TkinterDnD.Tk()
         root.title("ZQ SFX Audio Splitter")
+        root.configure(bg=BACKGROUND_COLOR)
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
 
-        # **Set the font before using it**
-        font_family = "Lato"
-        font_size = 14
+        font_family = "Segoe UI"
+        font_size = 12
 
-        # Create Notebook
         notebook = ttk.Notebook(root)
         notebook.pack(fill='both', expand=True)
 
-        # Create frames for tabs in the new order
-        single_file_tab = Frame(notebook)
-        batch_tab = Frame(notebook)
+        single_file_tab = Frame(notebook, bg=BACKGROUND_COLOR)
+        batch_tab = Frame(notebook, bg=BACKGROUND_COLOR)
 
-        # Add tabs to notebook in the new order
         notebook.add(single_file_tab, text='Split Single File')
         notebook.add(batch_tab, text='Batch Split')
 
@@ -789,137 +778,251 @@ def main():
 
         root.protocol("WM_DELETE_WINDOW", lambda: on_closing(root, message_queue))
 
-        # Set the font to Lato and increase the size for accessibility
-        font_family = "Lato"
-        font_size = 14
+        font_family = "Segoe UI"
+        font_size = 12
 
-        # At the beginning of the main() function, after initializing 'root':
         style = ttk.Style()
-        style.theme_use('default')
-        # Set the progress bar thickness to match the font size plus padding
-        bar_thickness = font_size + 10  # Adjust as needed for consistent appearance
+        style.theme_use('clam')
+
+        style.configure(
+            "Custom.TButton",
+            background="#3C3C3C",
+            foreground="#FFFFFF",
+            font=(font_family, font_size),
+            borderwidth=1,
+            focuscolor=BACKGROUND_COLOR
+        )
+
+        style.map(
+            "Custom.TButton",
+            background=[
+                ('!active', '#3C3C3C'),
+                ('pressed', '#2C2C2C'),
+                ('active', '#5C5C5C')
+            ],
+            foreground=[
+                ('disabled', '#7A7A7A'),
+                ('!disabled', '#FFFFFF')
+            ]
+        )
 
         style.configure(
             "Custom.Horizontal.TProgressbar",
-            troughcolor="#D3D3D3",  # Light grey background
-            background="#4CAF50",   # Green progress bar
-            thickness=bar_thickness
+            troughcolor="#3C3C3C",
+            background="#76C7C0"
         )
 
-        # Single File Split Section
-        single_file_tab.columnconfigure(0, weight=1)
-        single_file_frame = LabelFrame(single_file_tab, text="Single File Split", font=(font_family, font_size, "bold"))
-        single_file_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
-        single_file_frame.columnconfigure(0, weight=1)
-        single_file_frame.columnconfigure(1, weight=3)
-        single_file_frame.columnconfigure(2, weight=0)
+        # **Custom style for Combobox**
+        style.configure(
+            "Custom.TCombobox",
+            fieldbackground="#3C3C3C",
+            background="#2C2C2C",
+            foreground="#FFFFFF",
+            selectbackground="#5C5C5C",
+            selectforeground="#FFFFFF",
+            arrowcolor="#FFFFFF",
+            bordercolor="#2C2C2C",
+            font=(font_family, font_size),
+        )
 
-        # File to Split Widgets
-        Label(single_file_frame, text="File to Split:", width=15, anchor='w', font=(font_family, font_size)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        single_file_entry = Entry(single_file_frame, textvariable=single_file_var, font=(font_family, font_size))
+        # **Add style map for different widget states**
+        style.map(
+            "Custom.TCombobox",
+            fieldbackground=[
+                ('readonly', '#3C3C3C'),
+                ('disabled', '#3C3C3C')
+            ],
+            foreground=[
+                ('readonly', '#FFFFFF'),
+                ('disabled', '#7A7A7A')
+            ],
+            background=[
+                ('readonly', '#2C2C2C'),
+                ('disabled', '#2C2C2C')
+            ],
+            arrowcolor=[
+                ('readonly', '#FFFFFF'),
+                ('disabled', '#7A7A7A')
+            ],
+            bordercolor=[
+                ('readonly', '#2C2C2C'),
+                ('disabled', '#2C2C2C')
+            ],
+        )
+
+        single_file_tab.columnconfigure(0, weight=1)
+        single_file_frame = LabelFrame(single_file_tab, text="Single File Split", font=(font_family, font_size, "bold"), bg=BACKGROUND_COLOR, fg=FOREGROUND_COLOR)
+        single_file_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        single_file_frame.columnconfigure(0, weight=0)
+        single_file_frame.columnconfigure(1, weight=1)
+        single_file_frame.columnconfigure(2, weight=0)
+        single_file_frame.columnconfigure(3, weight=0)
+
+        Label(single_file_frame, text="File to Split:", width=15, anchor='w', font=(FONT_FAMILY, FONT_SIZE), fg=FOREGROUND_COLOR, bg=BACKGROUND_COLOR).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        single_file_entry = Entry(single_file_frame, textvariable=single_file_var, font=(font_family, font_size), fg=FOREGROUND_COLOR, bg="#3C3C3C")
         single_file_entry.grid(row=0, column=1, sticky="ew", padx=(0, 5), pady=5)
         single_file_entry.drop_target_register(DND_FILES)
         single_file_entry.dnd_bind('<<Drop>>', lambda event: handle_single_file_drop(event, single_file_var, message_queue))
-        Button(single_file_frame, text="Browse...", command=lambda: browse_single_file(message_queue), font=(font_family, font_size)).grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        ttk.Button(
+            single_file_frame,
+            text="Browse...",
+            command=lambda: browse_single_file(message_queue),
+            style="Custom.TButton",
+            width=browse_button_width
+        ).grid(row=0, column=2, sticky="w", padx=5, pady=5)
 
-        # **Move Output Directory Widgets Here**
-        Label(single_file_frame, text="Output Directory:", width=15, anchor='w', font=(font_family, font_size)).grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        output_dir_entry = Entry(single_file_frame, textvariable=output_dir_var, font=(font_family, font_size))
-        output_dir_entry.grid(row=1, column=1, sticky="ew", padx=(0, 5), pady=5)
-        output_dir_entry.drop_target_register(DND_FILES)
-        output_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, output_dir_var, message_queue))
-        Button(single_file_frame, text="Browse...", command=lambda: browse_output_dir(message_queue), font=(font_family, font_size)).grid(row=1, column=2, sticky="w", padx=5, pady=5)
+        open_input_file_button = ttk.Button(
+            single_file_frame,
+            text="Open",
+            command=lambda: open_file_directory(single_file_var.get()),
+            style="Custom.TButton",
+            state="disabled",
+            width=open_button_width
+        )
+        open_input_file_button.grid(row=0, column=3, sticky="w", padx=5, pady=5)
 
-        # Adjust the row index for the split button
-        split_single_file_button = Button(
+        Label(single_file_frame, text="Output Directory:", width=15, anchor='w', font=(FONT_FAMILY, FONT_SIZE), fg=FOREGROUND_COLOR, bg=BACKGROUND_COLOR).grid(row=1, column=0, sticky="w", padx=5, pady=5)
+
+        output_dir_entry_single = Entry(single_file_frame, textvariable=output_dir_var, font=(font_family, font_size), fg=FOREGROUND_COLOR, bg="#3C3C3C")
+        output_dir_entry_single.grid(row=1, column=1, sticky="ew", padx=(0, 5), pady=5)
+
+        output_dir_entry_single.drop_target_register(DND_FILES)
+        output_dir_entry_single.dnd_bind('<<Drop>>', lambda event: handle_drop(event, output_dir_var, message_queue))
+
+        ttk.Button(
+            single_file_frame,
+            text="Browse...",
+            command=lambda: browse_output_dir(message_queue),
+            style="Custom.TButton",
+            width=browse_button_width
+        ).grid(row=1, column=2, sticky="w", padx=5, pady=5)
+
+        open_output_button = ttk.Button(
+            single_file_frame,
+            text="Open",
+            command=lambda: open_output_directory(output_dir_var.get()),
+            style="Custom.TButton",
+            state="disabled",
+            width=open_button_width
+        )
+        open_output_button.grid(row=1, column=3, sticky="w", padx=5, pady=5)
+
+        split_single_file_button = ttk.Button(
             single_file_frame,
             text="Split Single File",
             command=lambda: threading.Thread(target=split_single_file, args=(message_queue,), daemon=True).start(),
-            font=(font_family, font_size),
+            style="Custom.TButton",
             state="disabled"
         )
-        split_single_file_button.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
+        split_single_file_button.grid(row=2, column=1, columnspan=3, sticky="ew", padx=5, pady=5)
 
-        # Add the channel selection frame here
-        channel_frame = LabelFrame(single_file_frame, text="Channel Selection", font=(font_family, font_size, "bold"))
+        channel_frame = LabelFrame(single_file_frame, text="Channel Selection", font=(font_family, font_size, "bold"), bg=BACKGROUND_COLOR, fg=FOREGROUND_COLOR)
         channel_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
         channel_frame.columnconfigure(0, weight=1)
 
-        Label(channel_frame, text="Select Channels to Process:", font=(font_family, font_size)).grid(row=0, column=0, columnspan=4, sticky="w", padx=5, pady=5)
+        Label(channel_frame, text="Select Channels to Process:", font=(font_family, font_size), fg=FOREGROUND_COLOR, bg=BACKGROUND_COLOR).grid(row=0, column=0, columnspan=4, sticky="w", padx=5, pady=5)
 
-        # Create a list to store checkbox widgets along with their channel indices
         channel_checkboxes = []
 
-        # Rearrange the channel buttons as before
-        channel_order = [0, 2, 4, 6, 1, 3, 5, 7]  # Channel indices are zero-based
+        channel_order = [0, 2, 4, 6, 1, 3, 5, 7]
         for idx, channel_idx in enumerate(channel_order):
             chk = Checkbutton(
                 channel_frame,
                 text=f"Channel {channel_idx + 1}",
                 variable=channel_vars[channel_idx],
-                font=(font_family, font_size)
+                font=(font_family, font_size),
+                fg=FOREGROUND_COLOR,
+                bg=BACKGROUND_COLOR
             )
             chk.grid(row=1 + idx // 4, column=idx % 4, sticky="w", padx=5, pady=2)
             channel_checkboxes.append((channel_idx, chk))
 
-        # Ensure the columns do not expand
         for col in range(4):
             channel_frame.columnconfigure(col, weight=0)
 
-        # Batch File Split Section
         batch_tab.columnconfigure(0, weight=1)
-        input_section_frame = LabelFrame(batch_tab, text="Batch File Split", font=(font_family, font_size, "bold"))
-        input_section_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
-        input_section_frame.columnconfigure(0, weight=1)
-        input_section_frame.columnconfigure(1, weight=3)
+        input_section_frame = LabelFrame(batch_tab, text="Batch File Split", font=(font_family, font_size, "bold"), bg=BACKGROUND_COLOR, fg=FOREGROUND_COLOR)
+        input_section_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        input_section_frame.columnconfigure(0, weight=0)
+        input_section_frame.columnconfigure(1, weight=1)
         input_section_frame.columnconfigure(2, weight=0)
+        input_section_frame.columnconfigure(3, weight=0)
 
-        # Input Directory Widgets
-        Label(input_section_frame, text="Input Directory:", width=15, anchor='w', font=(font_family, font_size)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        input_dir_entry = Entry(input_section_frame, textvariable=input_dir_var, font=(font_family, font_size))
+        Label(input_section_frame, text="Input Directory:", width=15, anchor='w', font=(FONT_FAMILY, FONT_SIZE), fg=FOREGROUND_COLOR, bg=BACKGROUND_COLOR).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        input_dir_entry = Entry(input_section_frame, textvariable=input_dir_var, font=(font_family, font_size), fg=FOREGROUND_COLOR, bg="#3C3C3C")
         input_dir_entry.grid(row=0, column=1, sticky="ew", padx=(0, 5), pady=5)
         input_dir_entry.drop_target_register(DND_FILES)
         input_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, input_dir_var, message_queue))
-        Button(input_section_frame, text="Browse...", command=lambda: browse_input_dir(message_queue), font=(font_family, font_size)).grid(row=0, column=2, sticky="w", padx=5, pady=5)
-        Label(input_section_frame, textvariable=file_count_var, font=(font_family, font_size, "italic")).grid(row=1, column=1, sticky="w", padx=5, pady=5)
+        ttk.Button(
+            input_section_frame,
+            text="Browse...",
+            command=lambda: browse_input_dir(message_queue),
+            style="Custom.TButton",
+            width=browse_button_width
+        ).grid(row=0, column=2, sticky="w", padx=5, pady=5)
 
-        # **Move Output Directory Widgets Here**
-        Label(input_section_frame, text="Output Directory:", width=15, anchor='w', font=(font_family, font_size)).grid(row=2, column=0, sticky="w", padx=5, pady=5)
-        output_dir_entry = Entry(input_section_frame, textvariable=output_dir_var, font=(font_family, font_size))
-        output_dir_entry.grid(row=2, column=1, sticky="ew", padx=(0, 5), pady=5)
-        output_dir_entry.drop_target_register(DND_FILES)
-        output_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, output_dir_var, message_queue))
-        Button(input_section_frame, text="Browse...", command=lambda: browse_output_dir(message_queue), font=(font_family, font_size)).grid(row=2, column=2, sticky="w", padx=5, pady=5)
+        open_input_directory_button = ttk.Button(
+            input_section_frame,
+            text="Open",
+            command=lambda: open_output_directory(input_dir_var.get()),
+            style="Custom.TButton",
+            state="disabled",
+            width=open_button_width
+        )
+        open_input_directory_button.grid(row=0, column=3, sticky="w", padx=5, pady=5)
 
-        # Adjust the row index for the split button
-        split_button = Button(
+        Label(input_section_frame, textvariable=file_count_var, font=(font_family, font_size, "italic"), fg=FOREGROUND_COLOR, bg=BACKGROUND_COLOR).grid(row=1, column=1, sticky="w", padx=5, pady=5)
+
+        Label(input_section_frame, text="Output Directory:", width=15, anchor='w', font=(FONT_FAMILY, FONT_SIZE), fg=FOREGROUND_COLOR, bg=BACKGROUND_COLOR).grid(row=2, column=0, sticky="w", padx=5, pady=5)
+        output_dir_entry_batch = Entry(input_section_frame, textvariable=output_dir_var, font=(font_family, font_size), fg=FOREGROUND_COLOR, bg="#3C3C3C")
+        output_dir_entry_batch.grid(row=2, column=1, sticky="ew", padx=(0, 5), pady=5)
+        output_dir_entry_batch.drop_target_register(DND_FILES)
+        output_dir_entry_batch.dnd_bind('<<Drop>>', lambda event: handle_drop(event, output_dir_var, message_queue))
+        ttk.Button(
+            input_section_frame,
+            text="Browse...",
+            command=lambda: browse_output_dir(message_queue),
+            style="Custom.TButton",
+            width=browse_button_width
+        ).grid(row=2, column=2, sticky="w", padx=5, pady=5)
+
+        open_output_directory_button = ttk.Button(
+            input_section_frame,
+            text="Open",
+            command=lambda: open_output_directory(output_dir_var.get()),
+            style="Custom.TButton",
+            state="disabled",
+            width=open_button_width
+        )
+        open_output_directory_button.grid(row=2, column=3, sticky="w", padx=5, pady=5)
+
+        split_button = ttk.Button(
             input_section_frame,
             text="Split Multiple Files",
             command=lambda: run_splitter(message_queue),
-            font=(font_family, font_size),
+            style="Custom.TButton",
             state="disabled"
         )
-        split_button.grid(row=3, column=1, sticky="ew", padx=5, pady=5)
+        split_button.grid(row=3, column=1, columnspan=3, sticky="ew", padx=5, pady=5)
 
-        # Options Section (Container Frame)
-        options_frame = Frame(root)
+        options_frame = Frame(root, bg=BACKGROUND_COLOR)
         options_frame.pack(fill='x', padx=5, pady=5)
         options_frame.columnconfigure(0, weight=1)
         options_frame.columnconfigure(1, weight=1)
 
-        # Override Quality Settings Frame
-        override_quality_frame = LabelFrame(options_frame, text="Override Quality Settings", font=(font_family, font_size, "bold"))
+        override_quality_frame = LabelFrame(options_frame, text="Override Quality Settings", font=(font_family, font_size, "bold"), bg=BACKGROUND_COLOR, fg=FOREGROUND_COLOR)
         override_quality_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         override_quality_frame.columnconfigure(0, weight=1)
         override_quality_frame.columnconfigure(1, weight=1)
 
-        # Override Sample Rate
         Checkbutton(
             override_quality_frame,
             text="Override Sample Rate",
             variable=override_sample_rate_var,
             command=toggle_sample_rate_dropdown,
-            font=(font_family, font_size)
+            font=(font_family, font_size),
+            fg=FOREGROUND_COLOR,
+            bg=BACKGROUND_COLOR
         ).grid(row=0, column=0, sticky="w", padx=5, pady=5)
 
         sample_rate_dropdown = ttk.Combobox(
@@ -928,17 +1031,19 @@ def main():
             values=["11025 Hz", "22050 Hz", "44100 Hz", "48000 Hz", "96000 Hz"],
             state="disabled",
             width=15,
-            font=(font_family, font_size)
+            font=(font_family, font_size),
+            style="Custom.TCombobox"  # Apply the custom style here
         )
         sample_rate_dropdown.grid(row=0, column=1, sticky="w", padx=5, pady=5)
 
-        # Override Bit Depth
         Checkbutton(
             override_quality_frame,
             text="Override Bit Depth",
             variable=override_bit_depth_var,
             command=toggle_bit_depth_dropdown,
-            font=(font_family, font_size)
+            font=(font_family, font_size),
+            fg=FOREGROUND_COLOR,
+            bg=BACKGROUND_COLOR
         ).grid(row=1, column=0, sticky="w", padx=5, pady=5)
 
         bit_depth_dropdown = ttk.Combobox(
@@ -947,40 +1052,41 @@ def main():
             values=["8 bit", "16 bit", "24 bit", "32 bit"],
             state="disabled",
             width=15,
-            font=(font_family, font_size)
+            font=(font_family, font_size),
+            style="Custom.TCombobox"  # Apply the custom style here
         )
         bit_depth_dropdown.grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
-        # Channel Naming Frame
-        naming_scheme_frame = LabelFrame(options_frame, text="Channel Naming", font=(font_family, font_size, "bold"))
+        naming_scheme_frame = LabelFrame(options_frame, text="Channel Naming", font=(font_family, font_size, "bold"), bg=BACKGROUND_COLOR, fg=FOREGROUND_COLOR)
         naming_scheme_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
         naming_scheme_frame.columnconfigure(0, weight=1)
         naming_scheme_frame.columnconfigure(1, weight=1)
 
-        Label(naming_scheme_frame, text="Naming Scheme:", font=(font_family, font_size)).grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=5)
+        Label(naming_scheme_frame, text="Naming Scheme:", font=(font_family, font_size), fg=FOREGROUND_COLOR, bg=BACKGROUND_COLOR).grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=5)
 
-        # Default Naming Radio Button
         default_naming_radio = Radiobutton(
             naming_scheme_frame,
             text="Default (chan1, chan2, ...)",
             variable=naming_scheme_var,
             value="default",
-            font=(font_family, font_size)
+            font=(font_family, font_size),
+            bg=BACKGROUND_COLOR,
+            fg=FOREGROUND_COLOR
         )
         default_naming_radio.grid(row=1, column=0, columnspan=2, sticky="w", padx=5, pady=5)
 
-        # Custom Naming Radio Button
         custom_naming_radio = Radiobutton(
             naming_scheme_frame,
             text="Custom",
             variable=naming_scheme_var,
             value="custom",
-            font=(font_family, font_size)
+            font=(font_family, font_size),
+            bg=BACKGROUND_COLOR,
+            fg=FOREGROUND_COLOR
         )
         custom_naming_radio.grid(row=2, column=0, columnspan=2, sticky="w", padx=5, pady=5)
 
-        # Custom Names Entry
-        custom_names_entry = Entry(naming_scheme_frame, textvariable=custom_names_var, state="disabled", font=(font_family, font_size))
+        custom_names_entry = Entry(naming_scheme_frame, textvariable=custom_names_var, state="disabled", font=(font_family, font_size), fg=FOREGROUND_COLOR, bg="#3C3C3C")
         custom_names_entry.grid(row=3, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
 
         def toggle_custom_names_entry():
@@ -991,12 +1097,10 @@ def main():
 
         naming_scheme_var.trace("w", lambda *args: toggle_custom_names_entry())
 
-        # Ensure columns do not expand unnecessarily
         for col in range(2):
             naming_scheme_frame.columnconfigure(col, weight=0)
 
-        # Progress Bar and Buttons Section
-        progress_frame = Frame(root)
+        progress_frame = Frame(root, bg=BACKGROUND_COLOR)
         progress_frame.pack(fill='x', padx=5, pady=5)
         progress_frame.columnconfigure(0, weight=1)
 
@@ -1005,18 +1109,18 @@ def main():
             orient="horizontal",
             mode="determinate",
             variable=progress_var,
-            style="Custom.Horizontal.TProgressbar"
+            style="Custom.Horizontal.TProgressbar",
+            length=200
         )
-        progress_bar.grid(row=0, column=0, sticky="ew", padx=5, pady=10)  # Increase pady for spacing
+        progress_bar.grid(row=0, column=0, sticky="ew", padx=5, pady=10)
 
-        # Adjust the progress label font size to match the rest of the UI
         progress_label = Label(
             progress_frame,
             text="0%",
             font=(font_family, font_size, "bold"),
-            background="#D3D3D3"  # Match the trough color
+            background="#3C3C3C",
+            fg=FOREGROUND_COLOR
         )
-        # Place the label centered over the progress bar
         progress_label.place(relx=0.5, rely=0.5, anchor="center")
 
         def process_queue():
@@ -1025,14 +1129,16 @@ def main():
                     msg_type, title, message = message_queue.get_nowait()
                     if msg_type == "info":
                         messagebox.showinfo(title, message)
-                        open_output_button.config(state="normal")
+                        if 'open_output_button' in globals():
+                            open_output_button.config(state="normal")
+                        if 'open_output_directory_button' in globals():
+                            open_output_directory_button.config(state="normal")
                     elif msg_type == "error":
                         messagebox.showerror(title, message)
                     elif msg_type == "progress":
                         progress_label.config(text=message)
-                        progress_bar["value"] = progress_var.get()  # Update the progress bar value
+                        progress_bar["value"] = progress_var.get()
                     elif msg_type == "enable_buttons":
-                        # No longer needed as buttons are managed by update_button_states
                         pass
             except queue.Empty:
                 pass
@@ -1040,51 +1146,58 @@ def main():
 
         root.after(100, process_queue)
 
-        # Initialize file count
         update_file_count()
 
-        # For Input Directory
         add_placeholder(input_dir_entry, "Please select an input directory")
-
-        # For Output Directory
-        add_placeholder(output_dir_entry, "Please select an output directory")
-
-        # For File to Split
+        add_placeholder(output_dir_entry_single, "Please select an output directory")
         add_placeholder(single_file_entry, "Please select a file to split")
+        add_placeholder(output_dir_entry_batch, "Please select an output directory")
 
-        # Tooltips for buttons
         ToolTip(split_single_file_button, "Split the selected file into individual channels.", font_family, font_size)
         ToolTip(split_button, "Split all .wav files in the input directory.", font_family, font_size)
 
-        # Tooltips for entries
-        ToolTip(input_dir_entry, "Use the browse button to navigate to the input directory or drag and drop a folder into the field.", font_family, font_size)
-        ToolTip(output_dir_entry, "Use the browse button to navigate to the output directory or drag and drop a folder into the field.", font_family, font_size)
-        ToolTip(single_file_entry, "Use the browse button to navigate to the file or drag and drop it into the field.", font_family, font_size)
+        ToolTip(input_dir_entry, "Use the browse button to navigate to the input directory or drag and drop a folder into the field.")
+        ToolTip(output_dir_entry_single, "Use the browse button to navigate to the output directory or drag and drop a folder into the field.")
+        ToolTip(single_file_entry, "Use the browse button to navigate to the file or drag and drop it into the field.")
+        ToolTip(output_dir_entry_batch, "Use the browse button to navigate to the output directory or drag and drop a folder into the field.")
 
-        # Function to update button states based on path validity
         def update_button_states():
-            # For Split Single File Button
             single_file_path = single_file_var.get()
             output_dir = output_dir_var.get()
+            input_dir = input_dir_var.get()
+
+            # Single File Tab Buttons
+            if os.path.isfile(single_file_path):
+                open_input_file_button.config(state='normal')
+            else:
+                open_input_file_button.config(state='disabled')
+
             if os.path.isfile(single_file_path) and os.path.isdir(output_dir):
                 split_single_file_button.config(state='normal')
             else:
                 split_single_file_button.config(state='disabled')
 
-            # For Split Multiple Files Button
-            input_dir = input_dir_var.get()
-            if os.path.isdir(input_dir) and os.path.isdir(output_dir):
-                split_button.config(state='normal')
-            else:
-                split_button.config(state='disabled')
-
-            # Enable or disable Open Output Directory button
             if os.path.isdir(output_dir):
                 open_output_button.config(state='normal')
             else:
                 open_output_button.config(state='disabled')
 
-        # Trace variables to update button states when paths change
+            # Batch Tab Buttons
+            if os.path.isdir(input_dir):
+                open_input_directory_button.config(state='normal')
+            else:
+                open_input_directory_button.config(state='disabled')
+
+            if os.path.isdir(input_dir) and os.path.isdir(output_dir):
+                split_button.config(state='normal')
+            else:
+                split_button.config(state='disabled')
+
+            if os.path.isdir(output_dir):
+                open_output_directory_button.config(state='normal')
+            else:
+                open_output_directory_button.config(state='disabled')
+
         single_file_var.trace_add('write', lambda *args: update_button_states())
         input_dir_var.trace_add('write', lambda *args: update_button_states())
         output_dir_var.trace_add('write', lambda *args: update_button_states())
