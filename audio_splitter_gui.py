@@ -771,10 +771,6 @@ def main():
         notebook.add(single_file_tab, text='Split Single File')
         notebook.add(batch_tab, text='Batch Split')
 
-        # Output Section (common to both tabs)
-        output_section_frame = LabelFrame(root, text="Split File Location", font=(font_family, font_size, "bold"))
-        output_section_frame.pack(fill='x', padx=5, pady=5)
-
         naming_scheme_var = StringVar(value="default")
         custom_names_var = StringVar(value="L,R,C,lfe,Ls,Rs,Lss,Rss")
         input_dir_var = StringVar(value="")
@@ -810,54 +806,43 @@ def main():
             thickness=bar_thickness
         )
 
-        # Output Section (Split File Location) moved above split sections
-        #output_section_frame = LabelFrame(root, text="Split File Location", font=(font_family, font_size, "bold"))        output_section_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
-        output_section_frame.columnconfigure(0, weight=1)
-        output_section_frame.columnconfigure(1, weight=3)  # Increase weight to make the field longer
-        output_section_frame.columnconfigure(2, weight=0)
-
-        Label(output_section_frame, text="Output Directory:", width=15, anchor='w', font=(font_family, font_size)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        output_dir_entry = Entry(output_section_frame, textvariable=output_dir_var, font=(font_family, font_size))
-        output_dir_entry.grid(row=0, column=1, sticky="ew", padx=(0, 5), pady=5)
-        output_dir_entry.drop_target_register(DND_FILES)
-        output_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, output_dir_var, message_queue))
-        Button(output_section_frame, text="Browse...", command=lambda: browse_output_dir(message_queue), font=(font_family, font_size)).grid(row=0, column=2, sticky="w", padx=5, pady=5)
-
-        open_output_button = Button(
-            output_section_frame,
-            text="Open Output Directory",
-            command=lambda: open_output_directory(output_dir_var.get()),
-            state="disabled",
-            font=(font_family, font_size)
-        )
-        open_output_button.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
-
         # Single File Split Section
         single_file_tab.columnconfigure(0, weight=1)
         single_file_frame = LabelFrame(single_file_tab, text="Single File Split", font=(font_family, font_size, "bold"))
         single_file_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
         single_file_frame.columnconfigure(0, weight=1)
-        single_file_frame.columnconfigure(1, weight=3)  # Increase weight to make the field longer
+        single_file_frame.columnconfigure(1, weight=3)
         single_file_frame.columnconfigure(2, weight=0)
 
+        # File to Split Widgets
         Label(single_file_frame, text="File to Split:", width=15, anchor='w', font=(font_family, font_size)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
         single_file_entry = Entry(single_file_frame, textvariable=single_file_var, font=(font_family, font_size))
         single_file_entry.grid(row=0, column=1, sticky="ew", padx=(0, 5), pady=5)
         single_file_entry.drop_target_register(DND_FILES)
         single_file_entry.dnd_bind('<<Drop>>', lambda event: handle_single_file_drop(event, single_file_var, message_queue))
         Button(single_file_frame, text="Browse...", command=lambda: browse_single_file(message_queue), font=(font_family, font_size)).grid(row=0, column=2, sticky="w", padx=5, pady=5)
+
+        # **Move Output Directory Widgets Here**
+        Label(single_file_frame, text="Output Directory:", width=15, anchor='w', font=(font_family, font_size)).grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        output_dir_entry = Entry(single_file_frame, textvariable=output_dir_var, font=(font_family, font_size))
+        output_dir_entry.grid(row=1, column=1, sticky="ew", padx=(0, 5), pady=5)
+        output_dir_entry.drop_target_register(DND_FILES)
+        output_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, output_dir_var, message_queue))
+        Button(single_file_frame, text="Browse...", command=lambda: browse_output_dir(message_queue), font=(font_family, font_size)).grid(row=1, column=2, sticky="w", padx=5, pady=5)
+
+        # Adjust the row index for the split button
         split_single_file_button = Button(
             single_file_frame,
             text="Split Single File",
             command=lambda: threading.Thread(target=split_single_file, args=(message_queue,), daemon=True).start(),
             font=(font_family, font_size),
-            state="disabled"  # Initially disabled
+            state="disabled"
         )
-        split_single_file_button.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
+        split_single_file_button.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
 
         # Add the channel selection frame here
         channel_frame = LabelFrame(single_file_frame, text="Channel Selection", font=(font_family, font_size, "bold"))
-        channel_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+        channel_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
         channel_frame.columnconfigure(0, weight=1)
 
         Label(channel_frame, text="Select Channels to Process:", font=(font_family, font_size)).grid(row=0, column=0, columnspan=4, sticky="w", padx=5, pady=5)
@@ -886,9 +871,10 @@ def main():
         input_section_frame = LabelFrame(batch_tab, text="Batch File Split", font=(font_family, font_size, "bold"))
         input_section_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
         input_section_frame.columnconfigure(0, weight=1)
-        input_section_frame.columnconfigure(1, weight=3)  # Increase weight to make the field longer
+        input_section_frame.columnconfigure(1, weight=3)
         input_section_frame.columnconfigure(2, weight=0)
 
+        # Input Directory Widgets
         Label(input_section_frame, text="Input Directory:", width=15, anchor='w', font=(font_family, font_size)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
         input_dir_entry = Entry(input_section_frame, textvariable=input_dir_var, font=(font_family, font_size))
         input_dir_entry.grid(row=0, column=1, sticky="ew", padx=(0, 5), pady=5)
@@ -897,14 +883,23 @@ def main():
         Button(input_section_frame, text="Browse...", command=lambda: browse_input_dir(message_queue), font=(font_family, font_size)).grid(row=0, column=2, sticky="w", padx=5, pady=5)
         Label(input_section_frame, textvariable=file_count_var, font=(font_family, font_size, "italic")).grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
+        # **Move Output Directory Widgets Here**
+        Label(input_section_frame, text="Output Directory:", width=15, anchor='w', font=(font_family, font_size)).grid(row=2, column=0, sticky="w", padx=5, pady=5)
+        output_dir_entry = Entry(input_section_frame, textvariable=output_dir_var, font=(font_family, font_size))
+        output_dir_entry.grid(row=2, column=1, sticky="ew", padx=(0, 5), pady=5)
+        output_dir_entry.drop_target_register(DND_FILES)
+        output_dir_entry.dnd_bind('<<Drop>>', lambda event: handle_drop(event, output_dir_var, message_queue))
+        Button(input_section_frame, text="Browse...", command=lambda: browse_output_dir(message_queue), font=(font_family, font_size)).grid(row=2, column=2, sticky="w", padx=5, pady=5)
+
+        # Adjust the row index for the split button
         split_button = Button(
             input_section_frame,
             text="Split Multiple Files",
             command=lambda: run_splitter(message_queue),
             font=(font_family, font_size),
-            state="disabled"  # Initially disabled
+            state="disabled"
         )
-        split_button.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
+        split_button.grid(row=3, column=1, sticky="ew", padx=5, pady=5)
 
         # Options Section (Container Frame)
         options_frame = Frame(root)
