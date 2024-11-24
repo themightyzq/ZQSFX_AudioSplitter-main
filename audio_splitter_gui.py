@@ -17,6 +17,9 @@ from pydub.utils import which
 import subprocess
 import json
 
+# Define channel_checkboxes globally
+channel_checkboxes = []
+
 def toggle_sample_rate_dropdown():
     if override_sample_rate_var.get():
         sample_rate_dropdown.config(state="readonly")
@@ -197,7 +200,7 @@ if ffmpeg_dir not in os.environ["PATH"]:
     os.environ["PATH"] += os.pathsep + ffmpeg_dir
     logger.debug(f"Updated PATH environment variable with ffmpeg directory: {ffmpeg_dir}")
 
-def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_files, message_queue, ffprobe_path, override_sample_rate, override_bit_depth):
+def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_files, message_queue, ffprobe_path, override_sample_rate, override_bit_depth, naming_scheme, custom_names):
     try:
         AudioSegment.ffprobe = ffprobe_path
         logger.debug(f"AudioSegment.ffprobe within thread set to: {AudioSegment.ffprobe}")
@@ -225,8 +228,8 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
         processed_files = 0
         error_files = 0
 
-        naming_scheme = naming_scheme_var.get()
-        custom_names = custom_names_var.get().split(",") if naming_scheme == "custom" else []
+        logger.debug(f"Naming Scheme: {naming_scheme}")
+        logger.debug(f"Custom Names: {custom_names}")
 
         for idx, wav_file in enumerate(wav_files):
             input_file = os.path.join(input_dir, wav_file)
@@ -287,9 +290,15 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
                 "-of", "default=noprint_wrappers=1:nokey=1",
                 input_file,
             ]
-            output = subprocess.check_output(cmd).decode().strip()
-            total_channels = int(output)
-            logger.debug(f"Total channels in '{wav_file}': {total_channels}")
+            try:
+                output = subprocess.check_output(cmd).decode().strip()
+                total_channels = int(output)
+                logger.debug(f"Total channels in '{wav_file}': {total_channels}")
+            except Exception as e:
+                logger.error(f"Error determining total channels for '{wav_file}': {e}")
+                message_queue.put(("error", "Error", f"Error determining total channels for '{wav_file}': {e}"))
+                error_files += 1
+                continue
 
             selected_channels = list(range(1, total_channels + 1))
 
@@ -424,6 +433,17 @@ def run_splitter(message_queue):
             logger.warning("No channels selected. All channels will be processed by default.")
             selected_channels = list(range(1, 9))
 
+        naming_scheme = naming_scheme_var.get()
+        custom_names = custom_names_var.get().split(",") if naming_scheme == "custom" else []
+
+        # Trim whitespace from custom names
+        custom_names = [name.strip() for name in custom_names]
+
+        # Optional: Validate that there are enough custom names
+        if naming_scheme == "custom" and len(custom_names) < 8:
+            logger.warning("Not enough custom names provided. Some channels will use default naming.")
+        
+        # Start the thread with the current naming_scheme and custom_names
         threading.Thread(
             target=split_audio_files,
             args=(
@@ -435,7 +455,9 @@ def run_splitter(message_queue):
                 message_queue,
                 ffprobe_path,
                 override_sample_rate,
-                override_bit_depth
+                override_bit_depth,
+                naming_scheme,
+                custom_names
             ),
             daemon=True,
         ).start()
@@ -563,9 +585,14 @@ def split_single_file(message_queue):
             "-of", "default=noprint_wrappers=1:nokey=1",
             file_path,
         ]
-        output = subprocess.check_output(cmd).decode().strip()
-        total_channels = int(output)
-        logger.debug(f"Total channels in input file: {total_channels}")
+        try:
+            output = subprocess.check_output(cmd).decode().strip()
+            total_channels = int(output)
+            logger.debug(f"Total channels in input file: {total_channels}")
+        except Exception as e:
+            logger.error(f"Error determining total channels for '{file_path}': {e}")
+            message_queue.put(("error", "Error", f"Error determining total channels for '{file_path}': {e}"))
+            return
 
         selected_channels = [idx for idx, var in enumerate(channel_vars[:total_channels]) if var.get()]
         if not selected_channels:
@@ -580,8 +607,23 @@ def split_single_file(message_queue):
         progress_var.set(0)
         progress_bar.config(maximum=100)
 
+        naming_scheme = naming_scheme_var.get()
+        custom_names = custom_names_var.get().split(",") if naming_scheme == "custom" else []
+        custom_names = [name.strip() for name in custom_names]
+
+        # Optional: Validate that there are enough custom names
+        if naming_scheme == "custom" and len(custom_names) < total_channels:
+            logger.warning("Not enough custom names provided. Some channels will use default naming.")
+
+        logger.debug(f"Override Bit Depth: {override_bit_depth}")
+        logger.debug(f"Selected Channels: {selected_channels}")
+        logger.debug(f"Naming Scheme: {naming_scheme}")
+        logger.debug(f"Custom Names: {custom_names}")
+
         for idx in selected_channels:
             output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_chan{idx + 1}.wav"
+            if naming_scheme == "custom" and idx < len(custom_names):
+                output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_{custom_names[idx].strip()}.wav"
             output_file = os.path.join(output_dir, output_filename)
             run_ffmpeg(file_path, idx, output_file, override_bit_depth)
             progress = int(((selected_channels.index(idx) + 1) / len(selected_channels)) * 100)
@@ -682,33 +724,29 @@ class ToolTip:
             self.tip_window = None
 
 def update_channel_checkboxes():
-    global channel_checkboxes
     try:
         file_path = single_file_var.get()
+        logger.debug(f"update_channel_checkboxes called with file_path: {file_path}")
         if not file_path or not os.path.isfile(file_path):
+            logger.debug("File path is invalid or does not exist.")
             return
 
-        cmd = [
-            ffprobe_path,
-            "-v", "error",
-            "-select_streams", "a:0",
-            "-show_entries", "stream=channels",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            file_path,
-        ]
-        output = subprocess.check_output(cmd).decode().strip()
-        total_channels = int(output)
-        logger.debug(f"Total channels in selected file: {total_channels}")
+        # Use pydub to get the number of channels
+        audio = AudioSegment.from_file(file_path)
+        total_channels = audio.channels
+        logger.debug(f"Number of channels from audio file: {total_channels}")
 
         for channel_idx, chk in channel_checkboxes:
             if channel_idx < total_channels:
                 chk.config(state='normal')
                 channel_vars[channel_idx].set(True)
+                logger.debug(f"Enabled checkbox for Channel {channel_idx + 1}")
             else:
                 chk.config(state='disabled')
                 channel_vars[channel_idx].set(False)
+                logger.debug(f"Disabled checkbox for Channel {channel_idx + 1}")
     except Exception as e:
-        logger.error(f"Error updating channel checkboxes: {e}")
+        logger.error(f"Error in update_channel_checkboxes: {e}")
         logger.debug(traceback.format_exc())
 
 def set_minimum_window_size(root):
@@ -732,6 +770,7 @@ open_button_width = 5
 def main():
     global split_single_file_button, open_output_button, open_input_file_button
     global split_button, open_output_directory_button, open_input_directory_button
+    global channel_checkboxes  # Declare as global to allow access in update_channel_checkboxes
     try:
         load_config()
 
@@ -809,7 +848,7 @@ def main():
         style.configure(
             "Custom.Horizontal.TProgressbar",
             troughcolor="#3C3C3C",
-            background="#76C7C0"
+            background="#00AA00"  # Green color
         )
 
         # **Custom style for Combobox**
@@ -848,6 +887,25 @@ def main():
                 ('readonly', '#2C2C2C'),
                 ('disabled', '#2C2C2C')
             ],
+        )
+
+        style.layout('text.Horizontal.TProgressbar', [
+            ('Horizontal.Progressbar.trough', {
+                'children': [
+                    ('Horizontal.Progressbar.pbar', {'side': 'left', 'sticky': 'ns'})
+                ],
+                'sticky': 'nswe'
+            }),
+            ('Horizontal.Progressbar.label', {'sticky': ''})
+        ])
+
+        style.configure(
+            'text.Horizontal.TProgressbar',
+            text='0%',  # Initial text
+            font=(font_family, font_size, "bold"),
+            foreground=FOREGROUND_COLOR,
+            background="#00AA00",  # Green color for the progress bar
+            troughcolor="#3C3C3C"
         )
 
         single_file_tab.columnconfigure(0, weight=1)
@@ -917,15 +975,19 @@ def main():
         split_single_file_button.grid(row=2, column=1, columnspan=3, sticky="ew", padx=5, pady=5)
 
         channel_frame = LabelFrame(single_file_frame, text="Channel Selection", font=(font_family, font_size, "bold"), bg=BACKGROUND_COLOR, fg=FOREGROUND_COLOR)
-        channel_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+        channel_frame.grid(row=3, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
         channel_frame.columnconfigure(0, weight=1)
 
         Label(channel_frame, text="Select Channels to Process:", font=(font_family, font_size), fg=FOREGROUND_COLOR, bg=BACKGROUND_COLOR).grid(row=0, column=0, columnspan=4, sticky="w", padx=5, pady=5)
 
-        channel_checkboxes = []
-
-        channel_order = [0, 2, 4, 6, 1, 3, 5, 7]
-        for idx, channel_idx in enumerate(channel_order):
+        # Initialize channel_checkboxes as a global list with desired layout
+        for channel_idx in range(8):
+            if channel_idx % 2 == 0:
+                row = 1
+                column = channel_idx // 2
+            else:
+                row = 2
+                column = (channel_idx - 1) // 2
             chk = Checkbutton(
                 channel_frame,
                 text=f"Channel {channel_idx + 1}",
@@ -934,7 +996,7 @@ def main():
                 fg=FOREGROUND_COLOR,
                 bg=BACKGROUND_COLOR
             )
-            chk.grid(row=1 + idx // 4, column=idx % 4, sticky="w", padx=5, pady=2)
+            chk.grid(row=row, column=column, sticky="w", padx=5, pady=2)
             channel_checkboxes.append((channel_idx, chk))
 
         for col in range(4):
@@ -976,6 +1038,7 @@ def main():
         Label(input_section_frame, text="Output Directory:", width=15, anchor='w', font=(FONT_FAMILY, FONT_SIZE), fg=FOREGROUND_COLOR, bg=BACKGROUND_COLOR).grid(row=2, column=0, sticky="w", padx=5, pady=5)
         output_dir_entry_batch = Entry(input_section_frame, textvariable=output_dir_var, font=(font_family, font_size), fg=FOREGROUND_COLOR, bg="#3C3C3C")
         output_dir_entry_batch.grid(row=2, column=1, sticky="ew", padx=(0, 5), pady=5)
+
         output_dir_entry_batch.drop_target_register(DND_FILES)
         output_dir_entry_batch.dnd_bind('<<Drop>>', lambda event: handle_drop(event, output_dir_var, message_queue))
         ttk.Button(
@@ -1109,40 +1172,51 @@ def main():
             orient="horizontal",
             mode="determinate",
             variable=progress_var,
-            style="Custom.Horizontal.TProgressbar",
+            style="text.Horizontal.TProgressbar",
             length=200
         )
         progress_bar.grid(row=0, column=0, sticky="ew", padx=5, pady=10)
 
-        progress_label = Label(
-            progress_frame,
-            text="0%",
-            font=(font_family, font_size, "bold"),
-            background="#3C3C3C",
-            fg=FOREGROUND_COLOR
-        )
-        progress_label.place(relx=0.5, rely=0.5, anchor="center")
+        # Remove or comment out the progress_label code
+        # progress_label = Label(
+        #     progress_frame,
+        #     text="0%",
+        #     font=(font_family, font_size, "bold"),
+        #     background=BACKGROUND_COLOR,  # This was causing the overlap
+        #     fg=FOREGROUND_COLOR
+        # )
+        # progress_label.place(relx=0.5, rely=0.5, anchor="center")
 
         def process_queue():
             try:
                 while True:
                     msg_type, title, message = message_queue.get_nowait()
-                    if msg_type == "info":
-                        messagebox.showinfo(title, message)
-                        if 'open_output_button' in globals():
-                            open_output_button.config(state="normal")
-                        if 'open_output_directory_button' in globals():
-                            open_output_directory_button.config(state="normal")
+                    if msg_type == "progress":
+                        progress_value = progress_var.get()
+                        progress_bar['value'] = progress_value
+                        style.configure('text.Horizontal.TProgressbar', text=f"{progress_value}%")
+                        root.update_idletasks()
                     elif msg_type == "error":
                         messagebox.showerror(title, message)
-                    elif msg_type == "progress":
-                        progress_label.config(text=message)
-                        progress_bar["value"] = progress_var.get()
+                    elif msg_type == "info":
+                        messagebox.showinfo(title, message)
                     elif msg_type == "enable_buttons":
-                        pass
+                        enable_all_buttons()
             except queue.Empty:
                 pass
             root.after(100, process_queue)
+
+        def enable_all_buttons():
+            split_button.config(state="normal")
+            split_single_file_button.config(state="normal")
+            if os.path.isdir(output_dir_var.get()):
+                open_output_directory_button.config(state="normal")
+                open_output_button.config(state="normal")
+            if os.path.isdir(input_dir_var.get()):
+                open_input_directory_button.config(state="normal")
+            if os.path.isfile(single_file_var.get()):
+                open_input_file_button.config(state="normal")
+                open_output_button.config(state="normal")
 
         root.after(100, process_queue)
 
@@ -1198,7 +1272,11 @@ def main():
             else:
                 open_output_directory_button.config(state='disabled')
 
-        single_file_var.trace_add('write', lambda *args: update_button_states())
+        def on_single_file_var_change(*args):
+            update_button_states()
+            update_channel_checkboxes()  # Ensure checkboxes update when the file changes
+
+        single_file_var.trace_add('write', on_single_file_var_change)
         input_dir_var.trace_add('write', lambda *args: update_button_states())
         output_dir_var.trace_add('write', lambda *args: update_button_states())
 
