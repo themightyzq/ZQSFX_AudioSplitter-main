@@ -327,7 +327,9 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
                 output_file = os.path.join(output_dir, output_filename)
                 logger.debug(f"Output file will be '{output_file}'.")
 
+                export_parameters = ["-c:a", codec]
                 if override_sample_rate:
+                    export_parameters += ["-ar", str(override_sample_rate)]
                     channel = channel.set_frame_rate(override_sample_rate)
                     logger.debug(f"Set frame rate to {override_sample_rate} Hz for channel {channel_number}.")
                 else:
@@ -335,7 +337,7 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
                     logger.debug(f"Maintained original frame rate of {original_frame_rate} Hz for channel {channel_number}.")
 
                 try:
-                    channel.export(output_file, format="wav", parameters=["-c:a", codec])
+                    channel.export(output_file, format="wav", parameters=export_parameters)
                     logger.info(f"Exported: {output_file}")
                 except Exception as e:
                     logger.error(f"Error exporting file '{output_file}': {e}")
@@ -622,10 +624,10 @@ def split_single_file(message_queue):
 
         for idx in selected_channels:
             output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_chan{idx + 1}.wav"
-            if naming_scheme == "custom" and (idx - 1) < len(custom_names):
-                output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_{custom_names[idx - 1].strip()}.wav"
+            if naming_scheme == "custom" and (idx) < len(custom_names):
+                output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_{custom_names[idx].strip()}.wav"
             output_file = os.path.join(output_dir, output_filename)
-            run_ffmpeg(file_path, idx, output_file, override_bit_depth)
+            run_ffmpeg(file_path, idx, output_file, override_bit_depth, override_sample_rate=int(sample_rate_var.get().split()[0]) if override_sample_rate_var.get() else None)
             progress = int(((selected_channels.index(idx) + 1) / len(selected_channels)) * 100)
             progress_var.set(progress)
             message_queue.put(("progress", None, f"{progress}%"))
@@ -646,7 +648,7 @@ def split_single_file(message_queue):
         split_button.config(state="normal")
         open_output_button.config(state="normal")
 
-def run_ffmpeg(file_path, channel_index, output_file, override_bit_depth=None):
+def run_ffmpeg(file_path, channel_index, output_file, override_bit_depth=None, override_sample_rate=None):
     bits_per_sample = get_bits_per_sample(file_path, ffprobe_path)
     if bits_per_sample is None:
         logger.error(f"Could not determine bit depth of '{file_path}'")
@@ -666,6 +668,10 @@ def run_ffmpeg(file_path, channel_index, output_file, override_bit_depth=None):
         "-y",
         "-i", file_path,
         "-af", f"pan=mono|c0=c{channel_index}",
+    ]
+    if override_sample_rate:
+        cmd += ["-ar", str(override_sample_rate)]
+    cmd += [
         "-c:a", codec,
         output_file,
     ]
@@ -804,7 +810,7 @@ def main():
         file_count_var.set("Files to process: 0")
         output_dir_var = StringVar(value="")
         override_sample_rate_var = BooleanVar()
-        sample_rate_var = StringVar(value="48000 Hz")
+        sample_rate_var = StringVar(value="48000 Hz")  # Changed default to 48000 Hz
         override_bit_depth_var = BooleanVar()
         bit_depth_var = StringVar(value="16 bit")
         channel_vars = [BooleanVar(value=True) for _ in range(8)]
