@@ -320,7 +320,7 @@ def split_audio_files(input_dir, output_dir, progress_var, progress_bar, total_f
                 logger.debug(f"Using codec '{codec}' for sample_fmt '{sample_fmt}'.")
 
                 base_name, _ = os.path.splitext(wav_file)
-                if naming_scheme == "custom" and channel_idx < len(custom_names):
+                if naming_scheme == "custom" and (channel_idx) < len(custom_names):
                     output_filename = f"{base_name}_{custom_names[channel_idx].strip()}.wav"
                 else:
                     output_filename = f"{base_name}_chan{channel_number}.wav"
@@ -442,7 +442,7 @@ def run_splitter(message_queue):
         # Optional: Validate that there are enough custom names
         if naming_scheme == "custom" and len(custom_names) < 8:
             logger.warning("Not enough custom names provided. Some channels will use default naming.")
-        
+    
         # Start the thread with the current naming_scheme and custom_names
         threading.Thread(
             target=split_audio_files,
@@ -562,7 +562,7 @@ def browse_single_file(message_queue):
         message_queue.put(("error", "Error", f"Error selecting file: {e}"))
 
 def split_single_file(message_queue):
-    split_single_file_button.config(state="disabled")
+    split_button.config(state="disabled")
     open_output_button.config(state="disabled")
     try:
         file_path = single_file_var.get()
@@ -622,8 +622,8 @@ def split_single_file(message_queue):
 
         for idx in selected_channels:
             output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_chan{idx + 1}.wav"
-            if naming_scheme == "custom" and idx < len(custom_names):
-                output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_{custom_names[idx].strip()}.wav"
+            if naming_scheme == "custom" and (idx - 1) < len(custom_names):
+                output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_{custom_names[idx - 1].strip()}.wav"
             output_file = os.path.join(output_dir, output_filename)
             run_ffmpeg(file_path, idx, output_file, override_bit_depth)
             progress = int(((selected_channels.index(idx) + 1) / len(selected_channels)) * 100)
@@ -643,7 +643,7 @@ def split_single_file(message_queue):
         logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"An unexpected error occurred:\n{e}"))
     finally:
-        split_single_file_button.config(state="normal")
+        split_button.config(state="normal")
         open_output_button.config(state="normal")
 
 def run_ffmpeg(file_path, channel_index, output_file, override_bit_depth=None):
@@ -672,10 +672,10 @@ def run_ffmpeg(file_path, channel_index, output_file, override_bit_depth=None):
     logger.debug(f"Running FFmpeg command: {' '.join(cmd)}")
     process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if process.returncode != 0:
-        logger.error(f"FFmpeg error for channel {channel_index + 1}: {process.stderr}")
-        messagebox.showerror("Error", f"Error processing channel {channel_index + 1}:\n{process.stderr}")
+        logger.error(f"FFmpeg error for channel {channel_index}: {process.stderr}")
+        messagebox.showerror("Error", f"Error processing channel {channel_index}:\n{process.stderr}")
     else:
-        logger.info(f"Channel {channel_index + 1} exported successfully.")
+        logger.info(f"Channel {channel_index} exported successfully.")
 
 def add_placeholder(entry, placeholder_text):
     def on_focus_in(event):
@@ -768,16 +768,14 @@ browse_button_width = 10
 open_button_width = 5
 
 def main():
-    global split_single_file_button, open_output_button, open_input_file_button
-    global split_button, open_output_directory_button, open_input_directory_button
-    global channel_checkboxes  # Declare as global to allow access in update_channel_checkboxes
+    global split_button, open_output_directory_button, open_output_button, open_input_file_button, open_input_directory_button
     try:
         load_config()
 
         global last_input_dir, last_output_dir
         global naming_scheme_var, custom_names_var, input_dir_var, file_count_var, output_dir_var
         global override_sample_rate_var, sample_rate_var, override_bit_depth_var, bit_depth_var, channel_vars
-        global progress_var, progress_bar, split_button, open_output_button, open_output_directory_button
+        global progress_var, progress_bar
         global sample_rate_dropdown, bit_depth_dropdown
         global single_file_var, single_file_entry
 
@@ -908,6 +906,7 @@ def main():
             troughcolor="#3C3C3C"
         )
 
+        # === Single File Tab ===
         single_file_tab.columnconfigure(0, weight=1)
         single_file_frame = LabelFrame(single_file_tab, text="Single File Split", font=(font_family, font_size, "bold"), bg=BACKGROUND_COLOR, fg=FOREGROUND_COLOR)
         single_file_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
@@ -965,17 +964,8 @@ def main():
         )
         open_output_button.grid(row=1, column=3, sticky="w", padx=5, pady=5)
 
-        split_single_file_button = ttk.Button(
-            single_file_frame,
-            text="Split Single File",
-            command=lambda: threading.Thread(target=split_single_file, args=(message_queue,), daemon=True).start(),
-            style="Custom.TButton",
-            state="disabled"
-        )
-        split_single_file_button.grid(row=2, column=1, columnspan=3, sticky="ew", padx=5, pady=5)
-
         channel_frame = LabelFrame(single_file_frame, text="Channel Selection", font=(font_family, font_size, "bold"), bg=BACKGROUND_COLOR, fg=FOREGROUND_COLOR)
-        channel_frame.grid(row=3, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        channel_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
         channel_frame.columnconfigure(0, weight=1)
 
         Label(channel_frame, text="Select Channels to Process:", font=(font_family, font_size), fg=FOREGROUND_COLOR, bg=BACKGROUND_COLOR).grid(row=0, column=0, columnspan=4, sticky="w", padx=5, pady=5)
@@ -1002,6 +992,7 @@ def main():
         for col in range(4):
             channel_frame.columnconfigure(col, weight=0)
 
+        # === Batch Split Tab ===
         batch_tab.columnconfigure(0, weight=1)
         input_section_frame = LabelFrame(batch_tab, text="Batch File Split", font=(font_family, font_size, "bold"), bg=BACKGROUND_COLOR, fg=FOREGROUND_COLOR)
         input_section_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
@@ -1026,7 +1017,7 @@ def main():
         open_input_directory_button = ttk.Button(
             input_section_frame,
             text="Open",
-            command=lambda: open_output_directory(input_dir_var.get()),
+            command=lambda: open_output_directory(output_dir_var.get()),
             style="Custom.TButton",
             state="disabled",
             width=open_button_width
@@ -1059,15 +1050,7 @@ def main():
         )
         open_output_directory_button.grid(row=2, column=3, sticky="w", padx=5, pady=5)
 
-        split_button = ttk.Button(
-            input_section_frame,
-            text="Split Multiple Files",
-            command=lambda: run_splitter(message_queue),
-            style="Custom.TButton",
-            state="disabled"
-        )
-        split_button.grid(row=3, column=1, columnspan=3, sticky="ew", padx=5, pady=5)
-
+        # === Options Section ===
         options_frame = Frame(root, bg=BACKGROUND_COLOR)
         options_frame.pack(fill='x', padx=5, pady=5)
         options_frame.columnconfigure(0, weight=1)
@@ -1163,6 +1146,7 @@ def main():
         for col in range(2):
             naming_scheme_frame.columnconfigure(col, weight=0)
 
+        # === Progress Bar ===
         progress_frame = Frame(root, bg=BACKGROUND_COLOR)
         progress_frame.pack(fill='x', padx=5, pady=5)
         progress_frame.columnconfigure(0, weight=1)
@@ -1177,15 +1161,22 @@ def main():
         )
         progress_bar.grid(row=0, column=0, sticky="ew", padx=5, pady=10)
 
-        # Remove or comment out the progress_label code
-        # progress_label = Label(
-        #     progress_frame,
-        #     text="0%",
-        #     font=(font_family, font_size, "bold"),
-        #     background=BACKGROUND_COLOR,  # This was causing the overlap
-        #     fg=FOREGROUND_COLOR
-        # )
-        # progress_label.place(relx=0.5, rely=0.5, anchor="center")
+        # === Bottom Buttons ===
+        bottom_buttons_frame = Frame(root, bg=BACKGROUND_COLOR)
+        bottom_buttons_frame.pack(fill='x', padx=5, pady=(0, 10))
+
+        split_button = ttk.Button(
+            bottom_buttons_frame,
+            text="Split",
+            command=lambda: split_based_on_tab(notebook, message_queue),
+            style="Custom.TButton",
+            state="disabled",
+            width=20
+        )
+        split_button.pack(side="left", expand=True, fill='x', padx=5, pady=5)
+
+        # Define button tooltips after moving them
+        ToolTip(split_button, "Split based on the active tab (Single or Batch).", FONT_FAMILY, FONT_SIZE)
 
         def process_queue():
             try:
@@ -1208,15 +1199,22 @@ def main():
 
         def enable_all_buttons():
             split_button.config(state="normal")
-            split_single_file_button.config(state="normal")
-            if os.path.isdir(output_dir_var.get()):
-                open_output_directory_button.config(state="normal")
-                open_output_button.config(state="normal")
-            if os.path.isdir(input_dir_var.get()):
-                open_input_directory_button.config(state="normal")
-            if os.path.isfile(single_file_var.get()):
-                open_input_file_button.config(state="normal")
-                open_output_button.config(state="normal")
+            current_tab = notebook.tab(notebook.select(), "text")
+            if current_tab == "Split Single File":
+                if os.path.isfile(single_file_var.get()) and os.path.isdir(output_dir_var.get()):
+                    open_output_button.config(state="normal")
+                    open_input_file_button.config(state="normal")
+            elif current_tab == "Batch Split":
+                if os.path.isdir(input_dir_var.get()) and os.path.isdir(output_dir_var.get()):
+                    open_input_directory_button.config(state="normal")
+                    open_output_directory_button.config(state="normal")
+
+        def split_based_on_tab(notebook, message_queue):
+            current_tab = notebook.tab(notebook.select(), "text")
+            if current_tab == "Split Single File":
+                threading.Thread(target=split_single_file, args=(message_queue,), daemon=True).start()
+            elif current_tab == "Batch Split":
+                run_splitter(message_queue)
 
         root.after(100, process_queue)
 
@@ -1227,50 +1225,31 @@ def main():
         add_placeholder(single_file_entry, "Please select a file to split")
         add_placeholder(output_dir_entry_batch, "Please select an output directory")
 
-        ToolTip(split_single_file_button, "Split the selected file into individual channels.", font_family, font_size)
-        ToolTip(split_button, "Split all .wav files in the input directory.", font_family, font_size)
-
-        ToolTip(input_dir_entry, "Use the browse button to navigate to the input directory or drag and drop a folder into the field.")
-        ToolTip(output_dir_entry_single, "Use the browse button to navigate to the output directory or drag and drop a folder into the field.")
-        ToolTip(single_file_entry, "Use the browse button to navigate to the file or drag and drop it into the field.")
-        ToolTip(output_dir_entry_batch, "Use the browse button to navigate to the output directory or drag and drop a folder into the field.")
-
         def update_button_states():
+            current_tab = notebook.tab(notebook.select(), "text")
             single_file_path = single_file_var.get()
             output_dir = output_dir_var.get()
             input_dir = input_dir_var.get()
 
-            # Single File Tab Buttons
-            if os.path.isfile(single_file_path):
-                open_input_file_button.config(state='normal')
-            else:
-                open_input_file_button.config(state='disabled')
+            logger.debug(f"Active Tab: {current_tab}")
+            logger.debug(f"Single File Path: {single_file_path}")
+            logger.debug(f"Input Directory: {input_dir}")
+            logger.debug(f"Output Directory: {output_dir}")
 
-            if os.path.isfile(single_file_path) and os.path.isdir(output_dir):
-                split_single_file_button.config(state='normal')
-            else:
-                split_single_file_button.config(state='disabled')
-
-            if os.path.isdir(output_dir):
-                open_output_button.config(state='normal')
-            else:
-                open_output_button.config(state='disabled')
-
-            # Batch Tab Buttons
-            if os.path.isdir(input_dir):
-                open_input_directory_button.config(state='normal')
-            else:
-                open_input_directory_button.config(state='disabled')
-
-            if os.path.isdir(input_dir) and os.path.isdir(output_dir):
-                split_button.config(state='normal')
-            else:
-                split_button.config(state='disabled')
-
-            if os.path.isdir(output_dir):
-                open_output_directory_button.config(state='normal')
-            else:
-                open_output_directory_button.config(state='disabled')
+            if current_tab == "Split Single File":
+                if os.path.isfile(single_file_path) and os.path.isdir(output_dir):
+                    split_button.config(state='normal')
+                    logger.debug("Split button enabled for Single File Split.")
+                else:
+                    split_button.config(state='disabled')
+                    logger.debug("Split button disabled for Single File Split.")
+            elif current_tab == "Batch Split":
+                if os.path.isdir(input_dir) and os.path.isdir(output_dir):
+                    split_button.config(state='normal')
+                    logger.debug("Split button enabled for Batch Split.")
+                else:
+                    split_button.config(state='disabled')
+                    logger.debug("Split button disabled for Batch Split.")
 
         def on_single_file_var_change(*args):
             update_button_states()
@@ -1290,6 +1269,13 @@ def main():
         logger.error(traceback.format_exc())
         messagebox.showerror("Error", f"An unexpected error occurred:\n{e}")
         sys.exit(1)
+
+def split_based_on_tab(notebook, message_queue):
+    current_tab = notebook.tab(notebook.select(), "text")
+    if current_tab == "Split Single File":
+        threading.Thread(target=split_single_file, args=(message_queue,), daemon=True).start()
+    elif current_tab == "Batch Split":
+        run_splitter(message_queue)
 
 if __name__ == "__main__":
     main()
