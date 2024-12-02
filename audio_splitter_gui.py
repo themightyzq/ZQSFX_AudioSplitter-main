@@ -30,6 +30,8 @@ import json
 # Define channel_checkboxes globally
 channel_checkboxes = []
 
+# Declare notebook as a global variable
+notebook = None
 
 def toggle_sample_rate_dropdown():
     if override_sample_rate_var.get():
@@ -37,13 +39,11 @@ def toggle_sample_rate_dropdown():
     else:
         sample_rate_dropdown.config(state="disabled")
 
-
 def toggle_bit_depth_dropdown():
     if override_bit_depth_var.get():
         bit_depth_dropdown.config(state="readonly")
     else:
         bit_depth_dropdown.config(state="disabled")
-
 
 def get_application_root():
     if getattr(sys, "frozen", False):
@@ -52,11 +52,9 @@ def get_application_root():
         app_root = os.path.dirname(os.path.abspath(__file__))
     return app_root
 
-
 tkdnd_path = os.path.join(get_application_root(), "tkdnd")
 if tkdnd_path not in sys.path:
     sys.path.append(tkdnd_path)
-
 
 def get_log_file_path():
     home = os.path.expanduser("~")
@@ -68,7 +66,6 @@ def get_log_file_path():
         log_dir = os.path.join(home, ".ZQSFXAudioSplitter", "logs")
     os.makedirs(log_dir, exist_ok=True)
     return os.path.join(log_dir, "app.log")
-
 
 def setup_logging():
     try:
@@ -89,6 +86,39 @@ def setup_logging():
         )
         logging.error(f"Failed to set up logging to file: {e}")
 
+def update_button_states():
+    current_tab = notebook.tab(notebook.select(), "text")
+    single_file_path = single_file_var.get()
+    output_dir = output_dir_var.get()
+    input_dir = input_dir_var.get()
+
+    logger.debug(f"Active Tab: {current_tab}")
+    logger.debug(f"Single File Path: {single_file_path}")
+    logger.debug(f"Input Directory: {input_dir}")
+    logger.debug(f"Output Directory: {output_dir}")
+
+    if current_tab == "Split Single File":
+        if os.path.isfile(single_file_path) and os.path.isdir(output_dir):
+            split_button.config(state="normal")
+            open_output_button.config(state="normal")
+            open_input_file_button.config(state="normal")
+            logger.debug("Split and Open buttons enabled for Single File Split.")
+        else:
+            split_button.config(state="disabled")
+            open_output_button.config(state="disabled")
+            open_input_file_button.config(state="disabled")
+            logger.debug("Split and Open buttons disabled for Single File Split.")
+    elif current_tab == "Batch Split":
+        if os.path.isdir(input_dir) and os.path.isdir(output_dir):
+            split_button.config(state="normal")
+            open_input_directory_button.config(state="normal")
+            open_output_directory_button.config(state="normal")
+            logger.debug("Split and Open buttons enabled for Batch Split.")
+        else:
+            split_button.config(state="disabled")
+            open_input_directory_button.config(state="disabled")
+            open_output_directory_button.config(state="disabled")
+            logger.debug("Split and Open buttons disabled for Batch Split.")
 
 def handle_drop(event, dir_var, message_queue):
     try:
@@ -117,14 +147,12 @@ def handle_drop(event, dir_var, message_queue):
         logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"Error handling drag-and-drop: {e}"))
 
-
 setup_logging()
 logger = logging.getLogger(__name__)
 
 last_input_dir = os.path.expanduser("~")
 last_output_dir = os.path.expanduser("~")
 last_dir = os.path.expanduser("~")
-
 
 def get_ffmpeg_paths():
     app_root = get_application_root()
@@ -168,7 +196,6 @@ def get_ffmpeg_paths():
         )
         sys.exit(1)
 
-
 def get_bits_per_sample(file_path, ffprobe_path):
     try:
         cmd = [
@@ -196,7 +223,6 @@ def get_bits_per_sample(file_path, ffprobe_path):
         logger.debug(traceback.format_exc())
         return None
 
-
 def get_sample_fmt(bits_per_sample):
     mapping = {8: "u8", 16: "s16", 24: "s24", 32: "s32"}
     sample_fmt = mapping.get(bits_per_sample)
@@ -207,7 +233,6 @@ def get_sample_fmt(bits_per_sample):
             f"Mapped bits_per_sample {bits_per_sample} to sample_fmt {sample_fmt}"
         )
     return sample_fmt
-
 
 def get_metadata(file_path, ffprobe_path):
     try:
@@ -246,7 +271,6 @@ def get_metadata(file_path, ffprobe_path):
         logger.debug(traceback.format_exc())
         return {}
 
-
 ffmpeg_path, ffprobe_path = get_ffmpeg_paths()
 
 AudioSegment.converter = ffmpeg_path
@@ -259,7 +283,6 @@ if ffmpeg_dir not in os.environ["PATH"]:
     logger.debug(
         f"Updated PATH environment variable with ffmpeg directory: {ffmpeg_dir}"
     )
-
 
 def split_audio_files(
     input_dir,
@@ -500,7 +523,6 @@ def split_audio_files(
     finally:
         message_queue.put(("enable_buttons", None, None))
 
-
 def browse_input_dir(message_queue):
     global last_dir
     try:
@@ -517,7 +539,6 @@ def browse_input_dir(message_queue):
         logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"Error selecting input directory: {e}"))
 
-
 def browse_output_dir(message_queue):
     global last_dir
     try:
@@ -533,7 +554,6 @@ def browse_output_dir(message_queue):
         logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"Error selecting output directory: {e}"))
 
-
 def update_file_count():
     input_dir = input_dir_var.get()
     if os.path.isdir(input_dir):
@@ -541,7 +561,6 @@ def update_file_count():
         file_count_var.set(f"Files to process: {len(wav_files)}")
     else:
         file_count_var.set("Files to process: 0")
-
 
 def run_splitter(message_queue):
     split_button.config(state="disabled")
@@ -645,7 +664,6 @@ def run_splitter(message_queue):
         logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"An unexpected error occurred:\n{e}"))
 
-
 def open_output_directory(output_dir):
     try:
         if os.name == "nt":
@@ -659,7 +677,6 @@ def open_output_directory(output_dir):
         logger.error(f"Failed to open output directory '{output_dir}': {e}")
         logger.debug(traceback.format_exc())
         messagebox.showerror("Error", f"Failed to open output directory:\n{e}")
-
 
 def open_file_directory(file_path):
     directory = os.path.dirname(file_path)
@@ -675,9 +692,7 @@ def open_file_directory(file_path):
         logger.error(f"Directory does not exist: {directory}")
         messagebox.showerror("Error", f"Directory does not exist:\n{directory}")
 
-
 CONFIG_FILE = os.path.join(get_application_root(), "config.json")
-
 
 def load_config():
     global last_input_dir, last_output_dir
@@ -694,7 +709,6 @@ def load_config():
     if not last_output_dir:
         last_output_dir = last_input_dir
 
-
 def save_config():
     config = {"last_input_dir": last_input_dir, "last_output_dir": last_output_dir}
     try:
@@ -705,12 +719,10 @@ def save_config():
         logger.error(f"Error saving config: {e}")
         logger.debug(traceback.format_exc())
 
-
 def on_closing(root, message_queue):
     save_config()
     logger.info("Configuration saved. Exiting application.")
     root.destroy()
-
 
 def handle_single_file_drop(event, file_var, message_queue):
     try:
@@ -730,7 +742,6 @@ def handle_single_file_drop(event, file_var, message_queue):
         logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"Error handling drag-and-drop: {e}"))
 
-
 def browse_single_file(message_queue):
     global last_dir
     try:
@@ -748,7 +759,6 @@ def browse_single_file(message_queue):
         logger.error(f"Error selecting file: {e}")
         logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"Error selecting file: {e}"))
-
 
 def split_single_file(message_queue):
     split_button.config(state="disabled")
@@ -888,7 +898,7 @@ def split_single_file(message_queue):
             (
                 "info",
                 "Splitting Complete",
-                f"Splitting of file '{file_path}' completed.",
+                f"Success!",
             )
         )
     except Exception as e:
@@ -899,7 +909,6 @@ def split_single_file(message_queue):
         split_button.config(state="normal")
         open_output_button.config(state="normal")  # Re-enable after split
         open_input_file_button.config(state="normal")  # Re-enable after split
-
 
 def run_ffmpeg(
     file_path,
@@ -949,7 +958,6 @@ def run_ffmpeg(
     else:
         logger.info(f"Channel {channel_index} exported successfully.")
 
-
 def add_placeholder(entry, placeholder_text):
     def on_focus_in(event):
         if entry.get() == placeholder_text:
@@ -965,7 +973,6 @@ def add_placeholder(entry, placeholder_text):
     entry.config(fg=PLACEHOLDER_COLOR)
     entry.bind("<FocusIn>", on_focus_in)
     entry.bind("<FocusOut>", on_focus_out)
-
 
 class ToolTip:
     def __init__(self, widget, text, font_family="Segoe UI", font_size=12):
@@ -999,7 +1006,6 @@ class ToolTip:
             self.tip_window.destroy()
             self.tip_window = None
 
-
 def update_channel_checkboxes():
     try:
         file_path = single_file_var.get()
@@ -1026,14 +1032,12 @@ def update_channel_checkboxes():
         logger.error(f"Error in update_channel_checkboxes: {e}")
         logger.debug(traceback.format_exc())
 
-
 def set_minimum_window_size(root):
     root.update_idletasks()
     width = root.winfo_width()
     height = root.winfo_height()
     root.minsize(width, height)
     logger.debug(f"Set minimum window size to {width}x{height}")
-
 
 FONT_FAMILY = "Segoe UI"
 FONT_SIZE = 12
@@ -1046,9 +1050,9 @@ PLACEHOLDER_COLOR = "#A9A9A9"
 browse_button_width = 10
 open_button_width = 5
 
-
 def main():
     global split_button, open_output_directory_button, open_output_button, open_input_file_button, open_input_directory_button
+    global notebook  # Declare notebook as global
     try:
         load_config()
 
@@ -1068,7 +1072,7 @@ def main():
         font_family = "Segoe UI"
         font_size = 12
 
-        notebook = ttk.Notebook(root)
+        notebook = ttk.Notebook(root)  # Assign to global notebook
         notebook.pack(fill="both", expand=True)
 
         single_file_tab = Frame(notebook, bg=BACKGROUND_COLOR)
@@ -1348,10 +1352,12 @@ def main():
             bg="#3C3C3C",
         )
         input_dir_entry.grid(row=0, column=1, sticky="ew", padx=(0, 5), pady=5)
+
         input_dir_entry.drop_target_register(DND_FILES)
         input_dir_entry.dnd_bind(
             "<<Drop>>", lambda event: handle_drop(event, input_dir_var, message_queue)
         )
+
         ttk.Button(
             input_section_frame,
             text="Browse...",
@@ -1606,39 +1612,8 @@ def main():
             # Removed as enabling buttons is now handled in update_button_states()
             pass
 
-        def update_button_states():
-            current_tab = notebook.tab(notebook.select(), "text")
-            single_file_path = single_file_var.get()
-            output_dir = output_dir_var.get()
-            input_dir = input_dir_var.get()
-
-            logger.debug(f"Active Tab: {current_tab}")
-            logger.debug(f"Single File Path: {single_file_path}")
-            logger.debug(f"Input Directory: {input_dir}")
-            logger.debug(f"Output Directory: {output_dir}")
-
-            if current_tab == "Split Single File":
-                if os.path.isfile(single_file_path) and os.path.isdir(output_dir):
-                    split_button.config(state="normal")
-                    open_output_button.config(state="normal")
-                    open_input_file_button.config(state="normal")
-                    logger.debug("Split and Open buttons enabled for Single File Split.")
-                else:
-                    split_button.config(state="disabled")
-                    open_output_button.config(state="disabled")
-                    open_input_file_button.config(state="disabled")
-                    logger.debug("Split and Open buttons disabled for Single File Split.")
-            elif current_tab == "Batch Split":
-                if os.path.isdir(input_dir) and os.path.isdir(output_dir):
-                    split_button.config(state="normal")
-                    open_input_directory_button.config(state="normal")
-                    open_output_directory_button.config(state="normal")
-                    logger.debug("Split and Open buttons enabled for Batch Split.")
-                else:
-                    split_button.config(state="disabled")
-                    open_input_directory_button.config(state="disabled")
-                    open_output_directory_button.config(state="disabled")
-                    logger.debug("Split and Open buttons disabled for Batch Split.")
+        def update_button_states_trigger():
+            update_button_states()
 
         def split_based_on_tab(notebook, message_queue):
             current_tab = notebook.tab(notebook.select(), "text")
@@ -1660,6 +1635,7 @@ def main():
         logger.info("ZQ SFX Audio Splitter application started.")
         logger.debug("Starting the Tkinter main loop.")
         set_minimum_window_size(root)
+        process_queue()
         root.mainloop()
 
     except Exception as e:
@@ -1667,7 +1643,6 @@ def main():
         logger.error(traceback.format_exc())
         messagebox.showerror("Error", f"An unexpected error occurred:\n{e}")
         sys.exit(1)
-
 
 def split_based_on_tab(notebook, message_queue):
     current_tab = notebook.tab(notebook.select(), "text")
@@ -1677,7 +1652,6 @@ def split_based_on_tab(notebook, message_queue):
         ).start()
     elif current_tab == "Batch Split":
         run_splitter(message_queue)
-
 
 if __name__ == "__main__":
     main()
