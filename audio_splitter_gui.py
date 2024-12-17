@@ -6,6 +6,11 @@ import logging
 import traceback
 import threading
 import queue
+import struct
+import xml.etree.ElementTree as ET
+from datetime import datetime
+import tempfile
+import shutil
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from tkinter import (
     Label,
@@ -29,9 +34,22 @@ import json
 
 # Define channel_checkboxes globally
 channel_checkboxes = []
-
 # Declare notebook as a global variable
 notebook = None
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+# Initialize tkdnd
+if getattr(sys, 'frozen', False):
+    tkdnd_path = resource_path('tkdnd')
+    os.environ['TKDND_LIBRARY'] = tkdnd_path
+else:
+    tkdnd_path = os.path.join(os.path.dirname(__file__), 'tkdnd')
+    os.environ['TKDND_LIBRARY'] = tkdnd_path
 
 def toggle_sample_rate_dropdown():
     if override_sample_rate_var.get():
@@ -234,42 +252,6 @@ def get_sample_fmt(bits_per_sample):
         )
     return sample_fmt
 
-def get_metadata(file_path, ffprobe_path):
-    try:
-        cmd = [
-            ffprobe_path,
-            "-v",
-            "quiet",
-            "-print_format",
-            "json",
-            "-show_format",
-            "-show_streams",
-            file_path,
-        ]
-        output = subprocess.check_output(cmd).decode()
-        data = json.loads(output)
-        metadata = data.get("format", {}).get("tags", {})
-        audio_stream = next(
-            (
-                stream
-                for stream in data.get("streams", [])
-                if stream["codec_type"] == "audio"
-            ),
-            None,
-        )
-        if audio_stream:
-            metadata["channels"] = audio_stream.get("channels", 0)
-            metadata["sample_rate"] = audio_stream.get("sample_rate", "0")
-        logger.debug(f"Extracted metadata for '{file_path}': {metadata}")
-        return metadata
-    except subprocess.CalledProcessError as e:
-        logger.error(f"FFprobe error for '{file_path}': {e}")
-        logger.debug(traceback.format_exc())
-        return {}
-    except Exception as e:
-        logger.error(f"Error extracting metadata from '{file_path}': {e}")
-        logger.debug(traceback.format_exc())
-        return {}
 
 ffmpeg_path, ffprobe_path = get_ffmpeg_paths()
 
@@ -298,18 +280,6 @@ def split_audio_files(
     custom_names,
 ):
     try:
-        AudioSegment.ffprobe = ffprobe_path
-        logger.debug(
-            f"AudioSegment.ffprobe within thread set to: {AudioSegment.ffprobe}"
-        )
-
-        ffmpeg_dir = os.path.dirname(ffprobe_path)
-        if ffmpeg_dir not in os.environ["PATH"]:
-            os.environ["PATH"] += os.pathsep + ffmpeg_dir
-            logger.debug(
-                f"Thread: Updated PATH environment variable with ffmpeg directory: {ffmpeg_dir}"
-            )
-
         if not os.path.isdir(input_dir):
             logger.error(f"Input directory '{input_dir}' does not exist.")
             message_queue.put(
@@ -336,9 +306,6 @@ def split_audio_files(
         processed_files = 0
         error_files = 0
 
-        logger.debug(f"Naming Scheme: {naming_scheme}")
-        logger.debug(f"Custom Names: {custom_names}")
-
         for idx, wav_file in enumerate(wav_files):
             input_file = os.path.join(input_dir, wav_file)
             logger.info(f"Processing file: {input_file}")
@@ -350,156 +317,57 @@ def split_audio_files(
             progress_bar.update_idletasks()
 
             try:
-                AudioSegment.ffprobe = ffprobe_path
-                logger.debug(
-                    f"AudioSegment.ffprobe before loading '{wav_file}': {AudioSegment.ffprobe}"
-                )
-
-                if ffmpeg_dir not in os.environ["PATH"]:
-                    os.environ["PATH"] += os.pathsep + ffmpeg_dir
-                    logger.debug(
-                        f"Before loading '{wav_file}': Updated PATH with ffmpeg directory: {ffmpeg_dir}"
-                    )
-
-                audio = AudioSegment.from_file(input_file)
-                logger.debug(f"Loaded audio file '{input_file}' successfully.")
-            except Exception as e:
-                logger.error(f"Error loading audio file '{input_file}': {e}")
-                logger.debug(traceback.format_exc())
-                message_queue.put(
-                    ("error", "Error", f"Error loading audio file '{input_file}': {e}")
-                )
-                error_files += 1
-                continue
-
-            # Removed unused 'metadata' variable
-            # metadata = get_metadata(input_file, ffprobe_path)
-
-            bits_per_sample = get_bits_per_sample(input_file, ffprobe_path)
-            if bits_per_sample is None:
-                message_queue.put(
-                    ("error", "Error", f"Could not determine bit depth of '{wav_file}'")
-                )
-                error_files += 1
-                continue
-
-            original_frame_rate = audio.frame_rate
-            original_channels = audio.channels
-            logger.info(f"Original sample rate: {original_frame_rate} Hz")
-            logger.info(f"Original bit depth: {bits_per_sample} bits")
-            logger.info(f"Number of channels in '{wav_file}': {original_channels}")
-
-            try:
-                channels = audio.split_to_mono()
-                logger.debug(f"Split audio into {len(channels)} mono channel(s).")
-            except Exception as e:
-                logger.error(f"Error splitting channels for '{wav_file}': {e}")
-                logger.debug(traceback.format_exc())
-                message_queue.put(
-                    (
-                        "error",
-                        "Error",
-                        f"Error splitting channels for '{wav_file}': {e}",
-                    )
-                )
-                error_files += 1
-                continue
-
-            cmd = [
-                ffprobe_path,
-                "-v",
-                "error",
-                "-select_streams",
-                "a:0",
-                "-show_entries",
-                "stream=channels",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                input_file,
-            ]
-            try:
+                # Get channel count using ffprobe
+                cmd = [
+                    ffprobe_path,
+                    "-v", "error",
+                    "-select_streams", "a:0",
+                    "-show_entries", "stream=channels",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    input_file
+                ]
                 output = subprocess.check_output(cmd).decode().strip()
                 total_channels = int(output)
                 logger.debug(f"Total channels in '{wav_file}': {total_channels}")
             except Exception as e:
                 logger.error(f"Error determining total channels for '{wav_file}': {e}")
                 message_queue.put(
-                    (
-                        "error",
-                        "Error",
-                        f"Error determining total channels for '{wav_file}': {e}",
-                    )
+                    ("error", "Error", f"Error determining total channels for '{wav_file}': {e}")
                 )
                 error_files += 1
                 continue
 
-            selected_channels = list(range(1, total_channels + 1))
-
-            for channel_idx, channel in enumerate(channels):
-                channel_number = channel_idx + 1
-
-                if channel_number not in selected_channels:
-                    continue
-
-                sample_fmt = get_sample_fmt(override_bit_depth or bits_per_sample)
-                if sample_fmt is None:
-                    logger.error(
-                        f"Unsupported bit depth: {override_bit_depth or bits_per_sample} bits in '{wav_file}'"
-                    )
-                    message_queue.put(
-                        (
-                            "error",
-                            "Error",
-                            f"Unsupported bit depth: {override_bit_depth or bits_per_sample} bits in '{wav_file}'",
-                        )
-                    )
-                    error_files += 1
-                    continue
-
-                codec_mapping = {
-                    "u8": "pcm_u8",
-                    "s16": "pcm_s16le",
-                    "s24": "pcm_s24le",
-                    "s32": "pcm_s32le",
-                }
-                codec = codec_mapping.get(sample_fmt, "pcm_s16le")
-                logger.debug(f"Using codec '{codec}' for sample_fmt '{sample_fmt}'.")
-
-                base_name, _ = os.path.splitext(wav_file)
-                if naming_scheme == "custom" and (channel_idx) < len(custom_names):
-                    output_filename = (
-                        f"{base_name}_{custom_names[channel_idx].strip()}.wav"
-                    )
-                else:
-                    output_filename = f"{base_name}_chan{channel_number}.wav"
-                output_file = os.path.join(output_dir, output_filename)
-                logger.debug(f"Output file will be '{output_file}'.")
-
-                export_parameters = ["-c:a", codec]
-                if override_sample_rate:
-                    export_parameters += ["-ar", str(override_sample_rate)]
-                    channel = channel.set_frame_rate(override_sample_rate)
-                    logger.debug(
-                        f"Set frame rate to {override_sample_rate} Hz for channel {channel_number}."
-                    )
-                else:
-                    channel = channel.set_frame_rate(original_frame_rate)
-                    logger.debug(
-                        f"Maintained original frame rate of {original_frame_rate} Hz for channel {channel_number}."
-                    )
-
+            # Process each channel
+            for channel_idx in range(total_channels):
                 try:
-                    channel.export(
-                        output_file, format="wav", parameters=export_parameters
+                    base_name, _ = os.path.splitext(wav_file)
+                    if naming_scheme == "custom" and channel_idx < len(custom_names):
+                        output_filename = f"{base_name}_{custom_names[channel_idx].strip()}.wav"
+                    else:
+                        output_filename = f"{base_name}_chan{channel_idx + 1}.wav"
+                    output_file = os.path.join(output_dir, output_filename)
+                    
+                    success = run_ffmpeg_with_metadata(
+                        input_file,
+                        channel_idx,
+                        output_file,
+                        override_bit_depth,
+                        override_sample_rate
                     )
-                    logger.info(f"Exported: {output_file}")
+                    
+                    if success:
+                        logger.info(f"Exported with metadata: {output_file}")
+                    else:
+                        raise Exception("Failed to export with metadata")
+                        
                 except Exception as e:
-                    logger.error(f"Error exporting file '{output_file}': {e}")
+                    logger.error(f"Error processing channel {channel_idx + 1} of '{wav_file}': {e}")
                     logger.debug(traceback.format_exc())
                     message_queue.put(
-                        ("error", "Error", f"Error exporting file '{output_file}': {e}")
+                        ("error", "Error", f"Error processing channel {channel_idx + 1} of '{wav_file}': {e}")
                     )
                     error_files += 1
+                    continue
 
             processed_files += 1
 
@@ -724,22 +592,18 @@ def on_closing(root, message_queue):
     logger.info("Configuration saved. Exiting application.")
     root.destroy()
 
+
+
+    
 def handle_single_file_drop(event, file_var, message_queue):
     try:
         dropped_path = event.data.strip("{}")
-        logger.debug(f"Dropped path: {dropped_path}")
-
         if os.path.isfile(dropped_path):
             file_var.set(dropped_path)
-            logger.debug(f"File set via drag-and-drop: {dropped_path}")
             update_channel_checkboxes()
             update_button_states()
-        else:
-            logger.error(f"Dropped item is not a file: {dropped_path}")
-            message_queue.put(("error", "Error", "Dropped item is not a file."))
     except Exception as e:
         logger.error(f"Error handling drag-and-drop: {e}")
-        logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"Error handling drag-and-drop: {e}"))
 
 def browse_single_file(message_queue):
@@ -751,13 +615,11 @@ def browse_single_file(message_queue):
         )
         if file_path:
             single_file_var.set(file_path)
-            logger.debug(f"Selected file: {file_path}")
             last_dir = os.path.dirname(file_path)
             update_channel_checkboxes()
             update_button_states()
     except Exception as e:
         logger.error(f"Error selecting file: {e}")
-        logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"Error selecting file: {e}"))
 
 def split_single_file(message_queue):
@@ -872,7 +734,7 @@ def split_single_file(message_queue):
             if naming_scheme == "custom" and (idx) < len(custom_names):
                 output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_{custom_names[idx].strip()}.wav"
             output_file = os.path.join(output_dir, output_filename)
-            run_ffmpeg(
+            run_ffmpeg_with_metadata(
                 file_path,
                 idx,
                 output_file,
@@ -910,53 +772,143 @@ def split_single_file(message_queue):
         open_output_button.config(state="normal")  # Re-enable after split
         open_input_file_button.config(state="normal")  # Re-enable after split
 
-def run_ffmpeg(
-    file_path,
-    channel_index,
-    output_file,
-    override_bit_depth=None,
-    override_sample_rate=None,
-):
-    bits_per_sample = get_bits_per_sample(file_path, ffprobe_path)
-    if bits_per_sample is None:
-        logger.error(f"Could not determine bit depth of '{file_path}'")
-        return
+def run_ffmpeg_with_metadata(input_file, channel_idx, output_file, override_bit_depth=None, override_sample_rate=None):
+    """
+    Process a single channel and preserve all metadata from source to output file
+    Uses WAVMetadataReader to read all BWF and iXML chunks
+    """
+    try:
+        # Create debug directory for logging
+        debug_dir = os.path.join(os.path.dirname(output_file), "debug_metadata")
+        os.makedirs(debug_dir, exist_ok=True)
+        
+        # Read all metadata using the improved WAVMetadataReader
+        reader = WAVMetadataReader(input_file)
+        source_metadata = reader.metadata
+        
+        # Log source metadata
+        with open(os.path.join(debug_dir, "source_metadata.txt"), "w") as f:
+            f.write(json.dumps(source_metadata, indent=2))
 
-    if override_bit_depth:
-        bits_per_sample = override_bit_depth
+        # Build FFmpeg command with comprehensive metadata preservation
+        cmd = [
+            ffmpeg_path,
+            '-y',
+            '-i', input_file,
+            '-map_metadata', '0',  # Preserve global metadata
+            '-write_bext', '1',    # Enable BWF/BEXT writing
+            '-write_id3v2', '1',   # Preserve ID3 tags if present
+            '-map', '0:a:0',       # Map first audio stream
+            '-af', f'pan=mono|c0=c{channel_idx}',
+        ]
 
-    codec_mapping = {8: "pcm_u8", 16: "pcm_s16le", 24: "pcm_s24le", 32: "pcm_s32le"}
-    codec = codec_mapping.get(bits_per_sample)
-    if codec is None:
-        logger.error(f"Unsupported bit depth: {bits_per_sample} bits in '{file_path}'")
-        return
+        # Add sample rate if specified
+        if override_sample_rate:
+            cmd.extend(['-ar', str(override_sample_rate)])
 
-    cmd = [
-        ffmpeg_path,
-        "-y",
-        "-i",
-        file_path,
-        "-af",
-        f"pan=mono|c0=c{channel_index}",
-    ]
-    if override_sample_rate:
-        cmd += ["-ar", str(override_sample_rate)]
-    cmd += [
-        "-c:a",
-        codec,
-        output_file,
-    ]
-    logger.debug(f"Running FFmpeg command: {' '.join(cmd)}")
-    process = subprocess.run(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-    )
-    if process.returncode != 0:
-        logger.error(f"FFmpeg error for channel {channel_index}: {process.stderr}")
-        messagebox.showerror(
-            "Error", f"Error processing channel {channel_index}:\n{process.stderr}"
+        # Add bit depth if specified
+        if override_bit_depth:
+            codec_mapping = {8: "pcm_u8", 16: "pcm_s16le", 24: "pcm_s24le", 32: "pcm_s32le"}
+            codec = codec_mapping.get(override_bit_depth, "pcm_s24le")
+            cmd.extend(['-c:a', codec])
+        else:
+            cmd.extend(['-c:a', 'pcm_s24le'])
+
+        # Add comprehensive metadata preservation flags
+        bwf_flags = [
+            '-metadata_header_padding', '8192',  # Increased padding for more metadata
+            '-rf64', 'auto',
+            '-fflags', '+bitexact',
+            '-map_metadata:s:a', '0:s:a',  # Copy stream metadata
+        ]
+        cmd.extend(bwf_flags)
+
+        # Map core BWF fields
+        bwf_fields = {
+            'Description': 'description',
+            'Originator': 'originator',
+            'Reference': 'originator_reference',
+            'OriginationDate': 'origination_date',
+            'OriginationTime': 'origination_time'
+        }
+
+        # Map additional metadata fields
+        ixml_fields = {
+            'Note': 'ixml_note',
+            'Scene': 'scene',
+            'Take': 'take',
+            'Tape': 'tape',
+            'Project': 'project',
+            'Category': 'category',
+            'Subcategory': 'subcategory'
+        }
+
+        # Add all BWF metadata
+        for source_key, ffmpeg_key in bwf_fields.items():
+            if source_key in source_metadata and source_metadata[source_key]:
+                cmd.extend(['-metadata', f'{ffmpeg_key}={source_metadata[source_key]}'])
+                # Also add as bext metadata for maximum compatibility
+                cmd.extend(['-metadata:s:a:0', f'bext_{ffmpeg_key}={source_metadata[source_key]}'])
+
+        # Add all iXML metadata
+        for source_key, ffmpeg_key in ixml_fields.items():
+            if source_key in source_metadata and source_metadata[source_key]:
+                cmd.extend(['-metadata', f'{ffmpeg_key}={source_metadata[source_key]}'])
+                # Add as both global and stream metadata
+                cmd.extend(['-metadata:s:a:0', f'ixml_{ffmpeg_key}={source_metadata[source_key]}'])
+
+        # Add output file
+        cmd.append(output_file)
+
+        # Log full command
+        with open(os.path.join(debug_dir, "ffmpeg_command.txt"), "w") as f:
+            f.write(" ".join(cmd))
+
+        # Execute command
+        process = subprocess.run(cmd, capture_output=True, text=True)
+        if process.returncode != 0:
+            logger.error(f"FFmpeg error: {process.stderr}")
+            with open(os.path.join(debug_dir, "error.txt"), "w") as f:
+                f.write(process.stderr)
+            return False
+
+        # Verify output metadata
+        output_reader = WAVMetadataReader(output_file)
+        output_metadata = output_reader.metadata
+
+        # Log output metadata
+        with open(os.path.join(debug_dir, "output_metadata.txt"), "w") as f:
+            f.write(json.dumps(output_metadata, indent=2))
+
+        # Compare metadata (excluding technical fields that will change)
+        excluded_fields = {'Duration', 'Format', 'NumChannels', 'Version', 
+                         'Number of Channels', 'Sample Width', 'Frame Rate', 
+                         'Number of Frames'}
+        
+        preserved = all(
+            key in output_metadata and output_metadata[key] == value
+            for key, value in source_metadata.items()
+            if value and key not in excluded_fields
         )
-    else:
-        logger.info(f"Channel {channel_index} exported successfully.")
+
+        if not preserved:
+            logger.warning("Some metadata was not preserved")
+            with open(os.path.join(debug_dir, "metadata_diff.txt"), "w") as f:
+                f.write("=== Missing Metadata ===\n")
+                for key, value in source_metadata.items():
+                    if value and key not in output_metadata:
+                        f.write(f"{key}: {value}\n")
+                f.write("\n=== Changed Metadata ===\n")
+                for key, value in source_metadata.items():
+                    if value and key in output_metadata and output_metadata[key] != value:
+                        f.write(f"{key}:\n  Source: {value}\n  Output: {output_metadata[key]}\n")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+        traceback.print_exc()
+        return False
 
 def add_placeholder(entry, placeholder_text):
     def on_focus_in(event):
@@ -1050,6 +1002,119 @@ PLACEHOLDER_COLOR = "#A9A9A9"
 browse_button_width = 10
 open_button_width = 5
 
+
+class WAVMetadataReader:
+    def __init__(self, filepath):
+        self.filepath = filepath
+        self.metadata = {}
+        self.read_metadata()
+    
+    def read_metadata(self):
+        try:
+            with open(self.filepath, 'rb') as file:
+                if file.read(4) != b'RIFF':
+                    return
+                    
+                file.seek(4, 1)  # Skip file size
+                
+                if file.read(4) != b'WAVE':
+                    return
+                
+                while True:
+                    try:
+                        chunk_id = file.read(4)
+                        if not chunk_id:
+                            break
+                            
+                        chunk_size = struct.unpack('<I', file.read(4))[0]
+                        
+                        if chunk_id == b'bext':
+                            # Read BEXT chunk completely
+                            self.read_bext_chunk(file)
+                        elif chunk_id == b'iXML':
+                            xml_data = file.read(chunk_size)
+                            self.read_ixml_chunk(xml_data)
+                        else:
+                            file.seek(chunk_size, 1)
+                            
+                    except struct.error:
+                        break
+        except Exception as e:
+            logger.error(f"Error reading metadata: {e}")
+
+    def read_bext_chunk(self, file):
+        try:
+            self.metadata['Description'] = self.read_string(file.read(256))
+            self.metadata['Originator'] = self.read_string(file.read(32))
+            self.metadata['OriginatorReference'] = self.read_string(file.read(32))
+            self.metadata['OriginationDate'] = self.read_string(file.read(10))
+            self.metadata['OriginationTime'] = self.read_string(file.read(8))
+            self.metadata['TimeReference'] = str(struct.unpack('<Q', file.read(8))[0])
+            self.metadata['Version'] = str(struct.unpack('<H', file.read(2))[0])
+            self.metadata['UMID'] = file.read(64).hex()
+            
+            # Read loudness metadata
+            self.metadata['LoudnessValue'] = str(struct.unpack('<H', file.read(2))[0])
+            self.metadata['LoudnessRange'] = str(struct.unpack('<H', file.read(2))[0])
+            self.metadata['MaxTruePeakLevel'] = str(struct.unpack('<H', file.read(2))[0])
+            self.metadata['MaxMomentaryLoudness'] = str(struct.unpack('<H', file.read(2))[0])
+            self.metadata['MaxShortTermLoudness'] = str(struct.unpack('<H', file.read(2))[0])
+            
+            # Reserved bytes
+            file.seek(180, 1)
+            
+            # Coding history (remaining bytes in chunk)
+            self.metadata['CodingHistory'] = self.read_string(file.read())
+            
+        except Exception as e:
+            logger.error(f"Error reading BEXT chunk: {e}")
+
+    def read_ixml_chunk(self, xml_data):
+        try:
+            xml_str = xml_data.decode('utf-8', errors='ignore')
+            root = ET.fromstring(xml_str)
+            
+            # Standard iXML fields
+            xml_tags = {
+                'NOTE': 'Note',
+                'PROJECT': 'Project',
+                'TAPE': 'Tape',
+                'SCENE': 'Scene',
+                'TAKE': 'Take',
+                'FILE_UID': 'FileUID',
+                'UBITS': 'UserBits',
+                'CIRCLED': 'CircleTake'
+            }
+            
+            for xml_tag, meta_key in xml_tags.items():
+                element = root.find(f'.//{xml_tag}')
+                if element is not None and element.text:
+                    self.metadata[meta_key] = element.text.strip()
+                    
+            # Category metadata
+            attr_list = root.findall('.//ATTR_LIST/ATTR')
+            for attr in attr_list:
+                name = attr.find('NAME')
+                value = attr.find('VALUE')
+                if name is not None and name.text == 'MusicalCategory' and value is not None:
+                    parts = value.text.split('/')
+                    if len(parts) >= 2:
+                        self.metadata['Category'] = parts[0].strip()
+                        self.metadata['Subcategory'] = parts[1].strip()
+                    else:
+                        self.metadata['Category'] = value.text.strip()
+                        
+        except Exception as e:
+            logger.error(f"Error reading iXML chunk: {e}")
+
+    def read_string(self, data):
+        try:
+            return data.split(b'\x00')[0].decode('utf-8').strip()
+        except:
+            return ''
+        
+
+
 def main():
     global split_button, open_output_directory_button, open_output_button, open_input_file_button, open_input_directory_button
     global notebook  # Declare notebook as global
@@ -1074,6 +1139,7 @@ def main():
 
         notebook = ttk.Notebook(root)  # Assign to global notebook
         notebook.pack(fill="both", expand=True)
+        
 
         single_file_tab = Frame(notebook, bg=BACKGROUND_COLOR)
         batch_tab = Frame(notebook, bg=BACKGROUND_COLOR)
@@ -1270,6 +1336,8 @@ def main():
             width=browse_button_width,
         ).grid(row=1, column=2, sticky="w", padx=5, pady=5)
 
+        
+
         open_output_button = ttk.Button(
             single_file_frame,
             text="Open",
@@ -1313,6 +1381,10 @@ def main():
                 font=(font_family, font_size),
                 fg=FOREGROUND_COLOR,
                 bg=BACKGROUND_COLOR,
+                selectcolor="#4A4A4A",  # Dark gray for selected state
+                activeforeground=FOREGROUND_COLOR,
+                activebackground=BACKGROUND_COLOR,
+                highlightthickness=0,  # Remove focus highlight
             )
             chk.grid(row=row, column=column, sticky="w", padx=5, pady=2)
             channel_checkboxes.append((channel_idx, chk))
@@ -1450,6 +1522,10 @@ def main():
             font=(font_family, font_size),
             fg=FOREGROUND_COLOR,
             bg=BACKGROUND_COLOR,
+            selectcolor="#4A4A4A",  # Dark gray for selected state
+            activeforeground=FOREGROUND_COLOR,
+            activebackground=BACKGROUND_COLOR,
+            highlightthickness=0,  # Remove focus highlight
         ).grid(row=0, column=0, sticky="w", padx=5, pady=5)
 
         sample_rate_dropdown = ttk.Combobox(
@@ -1471,6 +1547,10 @@ def main():
             font=(font_family, font_size),
             fg=FOREGROUND_COLOR,
             bg=BACKGROUND_COLOR,
+            selectcolor="#4A4A4A",  # Dark gray for selected state
+            activeforeground=FOREGROUND_COLOR,
+            activebackground=BACKGROUND_COLOR,
+            highlightthickness=0,  # Remove focus highlight
         ).grid(row=1, column=0, sticky="w", padx=5, pady=5)
 
         bit_depth_dropdown = ttk.Combobox(
@@ -1511,6 +1591,10 @@ def main():
             font=(font_family, font_size),
             bg=BACKGROUND_COLOR,
             fg=FOREGROUND_COLOR,
+            selectcolor="#4A4A4A",  # Dark gray for selected state
+            activeforeground=FOREGROUND_COLOR,
+            activebackground=BACKGROUND_COLOR,
+            highlightthickness=0,  # Remove focus highlight
         )
         default_naming_radio.grid(
             row=1, column=0, columnspan=2, sticky="w", padx=5, pady=5
@@ -1524,6 +1608,10 @@ def main():
             font=(font_family, font_size),
             bg=BACKGROUND_COLOR,
             fg=FOREGROUND_COLOR,
+            selectcolor="#4A4A4A",  # Dark gray for selected state
+            activeforeground=FOREGROUND_COLOR,
+            activebackground=BACKGROUND_COLOR,
+            highlightthickness=0,  # Remove focus highlight
         )
         custom_naming_radio.grid(
             row=2, column=0, columnspan=2, sticky="w", padx=5, pady=5
@@ -1589,6 +1677,127 @@ def main():
             FONT_SIZE,
         )
 
+            
+        
+
+        # Simplified unified processing function
+        def unified_split_processing(input_path, output_dir, selected_channels, message_queue, is_batch=False):
+            """Process files with diagnostic reporting"""
+            try:
+                if not os.path.exists(input_path) or not os.path.exists(output_dir):
+                    message_queue.put(("error", "Error", "Invalid input path or output directory"))
+                    return
+
+                # Get processing parameters
+                override_sample_rate = (
+                    int(sample_rate_var.get().split()[0])
+                    if override_sample_rate_var.get()
+                    else None
+                )
+                override_bit_depth = (
+                    int(bit_depth_var.get().split()[0])
+                    if override_bit_depth_var.get()
+                    else None
+                )
+                naming_scheme = naming_scheme_var.get()
+                custom_names = custom_names_var.get().split(",") if naming_scheme == "custom" else []
+                custom_names = [name.strip() for name in custom_names]
+
+                # Get list of files to process
+                if is_batch:
+                    wav_files = [f for f in os.listdir(input_path) if f.lower().endswith('.wav')]
+                    total_files = len(wav_files)
+                    file_base = input_path
+                else:
+                    wav_files = [os.path.basename(input_path)]
+                    total_files = 1
+                    file_base = os.path.dirname(input_path)
+
+                diagnostic_reports = []
+                processed_files = 0
+                error_files = 0
+
+                for idx, wav_file in enumerate(wav_files):
+                    input_file = os.path.join(file_base, wav_file) if is_batch else input_path
+                    file_report = [f"\n=== Processing {wav_file} ==="]
+                    
+                    # Get channel count
+                    cmd = [
+                        ffprobe_path,
+                        "-v", "error",
+                        "-select_streams", "a:0",
+                        "-show_entries", "stream=channels",
+                        "-of", "default=noprint_wrappers=1:nokey=1",
+                        input_file
+                    ]
+                    
+                    try:
+                        total_channels = int(subprocess.check_output(cmd).decode().strip())
+                        file_report.append(f"Detected {total_channels} channels")
+                    except Exception as e:
+                        error_msg = f"Error getting channel count: {e}"
+                        file_report.append(error_msg)
+                        diagnostic_reports.extend(file_report)
+                        error_files += 1
+                        continue
+
+                    # Process each selected channel
+                    for channel_idx in selected_channels:
+                        if channel_idx >= total_channels:
+                            file_report.append(f"Skipping channel {channel_idx + 1} (exceeds available channels)")
+                            continue
+                            
+                        base_name = os.path.splitext(wav_file)[0]
+                        if naming_scheme == "custom" and channel_idx < len(custom_names):
+                            output_filename = f"{base_name}_{custom_names[channel_idx]}.wav"
+                        else:
+                            output_filename = f"{base_name}_chan{channel_idx + 1}.wav"
+                            
+                        output_file = os.path.join(output_dir, output_filename)
+                        
+                        # Use run_ffmpeg_with_metadata directly instead of process_channel_with_metadata
+                        success = run_ffmpeg_with_metadata(
+                            input_file,
+                            channel_idx,
+                            output_file,
+                            override_bit_depth,
+                            override_sample_rate
+                        )
+                        
+                        file_report.append(f"\nChannel {channel_idx + 1} Processing Result:")
+                        if success:
+                            file_report.append("Successfully processed with metadata preserved")
+                        else:
+                            file_report.append("Failed to process channel")
+                            error_files += 1
+
+                    processed_files += 1
+                    diagnostic_reports.extend(file_report)
+                    
+                    progress = int((processed_files / total_files) * 100)
+                    progress_var.set(progress)
+                    message_queue.put(("progress", None, f"{progress}%"))
+
+                # Show detailed completion report
+                full_report = "\n".join([
+                    "=== Processing Summary ===",
+                    f"Total files processed: {processed_files} of {total_files}",
+                    f"Files with errors: {error_files}",
+                    f"Output Directory: {output_dir}",
+                    "\n=== Detailed Processing Report ===",
+                    *diagnostic_reports
+                ])
+                
+                message_queue.put(("info", "Processing Complete", full_report))
+                
+            except Exception as e:
+                logger.error(f"Error in unified_split_processing: {e}")
+                logger.debug(traceback.format_exc())
+                message_queue.put(("error", "Error", f"Critical error occurred:\n{str(e)}\n\nFull diagnostic report:\n{''.join(diagnostic_reports)}" if 'diagnostic_reports' in locals() else str(e)))
+            finally:
+                message_queue.put(("enable_buttons", None, None))
+        
+
         def process_queue():
             try:
                 while True:
@@ -1608,14 +1817,9 @@ def main():
                 pass
             root.after(100, process_queue)
 
-        def enable_all_buttons():
-            # Removed as enabling buttons is now handled in update_button_states()
-            pass
+    
 
-        def update_button_states_trigger():
-            update_button_states()
-
-        def split_based_on_tab(notebook, message_queue):
+        def split_based_on_tab1(notebook, message_queue):
             current_tab = notebook.tab(notebook.select(), "text")
             if current_tab == "Split Single File":
                 threading.Thread(
@@ -1623,6 +1827,31 @@ def main():
                 ).start()
             elif current_tab == "Batch Split":
                 run_splitter(message_queue)
+
+        def split_based_on_tab(notebook, message_queue):
+            current_tab = notebook.tab(notebook.select(), "text")
+            selected_channels = [i for i, var in enumerate(channel_vars) if var.get()]
+            
+            if not selected_channels:
+                message_queue.put(("error", "Error", "Please select at least one channel to process"))
+                return
+                
+            if current_tab == "Split Single File":
+                input_path = single_file_var.get()
+                output_dir = output_dir_var.get()
+                threading.Thread(
+                    target=unified_split_processing,
+                    args=(input_path, output_dir, selected_channels, message_queue, False),
+                    daemon=True
+                ).start()
+            else:  # Batch Split
+                input_dir = input_dir_var.get()
+                output_dir = output_dir_var.get()
+                threading.Thread(
+                    target=unified_split_processing,
+                    args=(input_dir, output_dir, selected_channels, message_queue, True),
+                    daemon=True
+                ).start()
 
         def on_single_file_var_change(*args):
             update_button_states()
