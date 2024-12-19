@@ -386,12 +386,8 @@ def split_audio_files(
         message_queue.put(("progress", None, "100%"))
         progress_bar.update_idletasks()
 
-        summary = f"Processed {processed_files} out of {len(wav_files)} files.\n"
-        if error_files > 0:
-            summary += f"Encountered errors in {error_files} file(s).\n"
-        summary += f"Output Directory: {output_dir}"
-
-        message_queue.put(("info", "Processing Complete", summary))
+        # Replace detailed summary with "SUCCESS!"
+        message_queue.put(("info", "Processing Complete", "SUCCESS!"))
         logger.info("Audio splitting process completed.")
 
     except Exception as e:
@@ -708,7 +704,7 @@ def split_single_file(message_queue):
                 (
                     "error",
                     "Error",
-                    "Please select at least one valid channel to process.",
+                    "Please select at least one channel to process.",
                 )
             )
             return
@@ -722,9 +718,7 @@ def split_single_file(message_queue):
         progress_bar.config(maximum=100)
 
         naming_scheme = naming_scheme_var.get()
-        custom_names = (
-            custom_names_var.get().split(",") if naming_scheme == "custom" else []
-        )
+        custom_names = naming_scheme_var.get().split(",") if naming_scheme == "custom" else []
         custom_names = [name.strip() for name in custom_names]
 
         # Optional: Validate that there are enough custom names
@@ -761,7 +755,6 @@ def split_single_file(message_queue):
             )
             progress_var.set(progress)
             message_queue.put(("progress", None, f"{progress}%"))
-            progress_bar.update_idletasks()
 
         # Remove debug_metadata folder after splitting
         debug_metadata_path = os.path.join(output_dir, "debug_metadata")
@@ -777,11 +770,12 @@ def split_single_file(message_queue):
         progress_bar["value"] = 100
         message_queue.put(("progress", None, "100%"))
 
+        # Replace detailed summary with "SUCCESS!"
         message_queue.put(
             (
                 "info",
                 "Splitting Complete",
-                f"Success!",
+                "SUCCESS!",
             )
         )
     except Exception as e:
@@ -1810,17 +1804,8 @@ def main():
                         logger.error(f"Failed to remove debug_metadata folder: {e}")
                         message_queue.put(("error", "Error", f"Failed to remove debug_metadata folder: {e}"))
 
-                # Show detailed completion report
-                full_report = "\n".join([
-                    "=== Processing Summary ===",
-                    f"Total files processed: {processed_files} of {total_files}",
-                    f"Files with errors: {error_files}",
-                    f"Output Directory: {output_dir}",
-                    "\n=== Detailed Processing Report ===",
-                    *diagnostic_reports
-                ])
-                
-                message_queue.put(("info", "Processing Complete", full_report))
+                # Replace detailed summary with "SUCCESS!"
+                message_queue.put(("info", "Processing Complete", "SUCCESS!"))
                 
             except Exception as e:
                 logger.error(f"Error in unified_split_processing: {e}")
@@ -1854,25 +1839,11 @@ def main():
         def split_based_on_tab(notebook, message_queue):
             current_tab = notebook.tab(notebook.select(), "text")
             if current_tab == "Split Single File":
-                selected_channels = [i for i, var in enumerate(channel_vars) if var.get()]
-                if not selected_channels:
-                    message_queue.put(("error", "Error", "Please select at least one channel to process"))
-                    return
-                input_path = single_file_var.get()
-                output_dir = output_dir_var.get()
                 threading.Thread(
-                    target=unified_split_processing,
-                    args=(input_path, output_dir, selected_channels, message_queue, False),
-                    daemon=True
+                    target=split_single_file, args=(message_queue,), daemon=True
                 ).start()
             elif current_tab == "Batch Split":
-                input_dir = input_dir_var.get()
-                output_dir = output_dir_var.get()
-                threading.Thread(
-                    target=unified_split_processing,
-                    args=(input_dir, output_dir, [], message_queue, True),
-                    daemon=True
-                ).start()
+                run_splitter(message_queue)
 
         def on_single_file_var_change(*args):
             update_button_states()
