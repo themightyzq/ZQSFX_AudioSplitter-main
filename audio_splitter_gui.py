@@ -591,10 +591,9 @@ def on_closing(root, message_queue):
     save_config()
     logger.info("Configuration saved. Exiting application.")
     root.destroy()
-
-
-
-    
+        
+        
+        
 def handle_single_file_drop(event, file_var, message_queue):
     try:
         dropped_path = event.data.strip("{}")
@@ -638,6 +637,7 @@ def split_single_file(message_queue):
             or file_path == "Please select a file to split"
             or not os.path.isfile(file_path)
         ):
+            logger.error("File directory not selected or invalid.")
             message_queue.put(
                 (
                     "error",
@@ -651,6 +651,7 @@ def split_single_file(message_queue):
             or output_dir == "Please select an output directory"
             or not os.path.isdir(output_dir)
         ):
+            logger.error("Output directory not selected or invalid.")
             message_queue.put(
                 (
                     "error",
@@ -765,7 +766,6 @@ def split_single_file(message_queue):
         )
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}")
-        logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"An unexpected error occurred:\n{e}"))
     finally:
         split_button.config(state="normal")
@@ -1114,7 +1114,6 @@ class WAVMetadataReader:
             return ''
         
 
-
 def main():
     global split_button, open_output_directory_button, open_output_button, open_input_file_button, open_input_directory_button
     global notebook  # Declare notebook as global
@@ -1335,8 +1334,6 @@ def main():
             style="Custom.TButton",
             width=browse_button_width,
         ).grid(row=1, column=2, sticky="w", padx=5, pady=5)
-
-        
 
         open_output_button = ttk.Button(
             single_file_frame,
@@ -1677,12 +1674,13 @@ def main():
             FONT_SIZE,
         )
 
-            
         
+    
 
         # Simplified unified processing function
         def unified_split_processing(input_path, output_dir, selected_channels, message_queue, is_batch=False):
             """Process files with diagnostic reporting"""
+            diagnostic_reports = []
             try:
                 if not os.path.exists(input_path) or not os.path.exists(output_dir):
                     message_queue.put(("error", "Error", "Invalid input path or output directory"))
@@ -1713,7 +1711,6 @@ def main():
                     total_files = 1
                     file_base = os.path.dirname(input_path)
 
-                diagnostic_reports = []
                 processed_files = 0
                 error_files = 0
 
@@ -1741,8 +1738,14 @@ def main():
                         error_files += 1
                         continue
 
+                    # Determine selected channels for this file
+                    if is_batch:
+                        current_selected_channels = list(range(total_channels))
+                    else:
+                        current_selected_channels = selected_channels
+
                     # Process each selected channel
-                    for channel_idx in selected_channels:
+                    for channel_idx in current_selected_channels:
                         if channel_idx >= total_channels:
                             file_report.append(f"Skipping channel {channel_idx + 1} (exceeds available channels)")
                             continue
@@ -1819,24 +1822,13 @@ def main():
 
     
 
-        def split_based_on_tab1(notebook, message_queue):
-            current_tab = notebook.tab(notebook.select(), "text")
-            if current_tab == "Split Single File":
-                threading.Thread(
-                    target=split_single_file, args=(message_queue,), daemon=True
-                ).start()
-            elif current_tab == "Batch Split":
-                run_splitter(message_queue)
-
         def split_based_on_tab(notebook, message_queue):
             current_tab = notebook.tab(notebook.select(), "text")
-            selected_channels = [i for i, var in enumerate(channel_vars) if var.get()]
-            
-            if not selected_channels:
-                message_queue.put(("error", "Error", "Please select at least one channel to process"))
-                return
-                
             if current_tab == "Split Single File":
+                selected_channels = [i for i, var in enumerate(channel_vars) if var.get()]
+                if not selected_channels:
+                    message_queue.put(("error", "Error", "Please select at least one channel to process"))
+                    return
                 input_path = single_file_var.get()
                 output_dir = output_dir_var.get()
                 threading.Thread(
@@ -1844,12 +1836,12 @@ def main():
                     args=(input_path, output_dir, selected_channels, message_queue, False),
                     daemon=True
                 ).start()
-            else:  # Batch Split
+            elif current_tab == "Batch Split":
                 input_dir = input_dir_var.get()
                 output_dir = output_dir_var.get()
                 threading.Thread(
                     target=unified_split_processing,
-                    args=(input_dir, output_dir, selected_channels, message_queue, True),
+                    args=(input_dir, output_dir, [], message_queue, True),
                     daemon=True
                 ).start()
 
