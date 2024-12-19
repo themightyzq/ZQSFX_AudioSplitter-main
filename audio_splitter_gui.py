@@ -371,6 +371,16 @@ def split_audio_files(
 
             processed_files += 1
 
+        # Remove debug_metadata folder after processing all files
+        debug_metadata_path = os.path.join(output_dir, "debug_metadata")
+        if os.path.exists(debug_metadata_path):
+            try:
+                shutil.rmtree(debug_metadata_path)
+                logger.debug(f"Removed debug_metadata folder at {debug_metadata_path}")
+            except Exception as e:
+                logger.error(f"Failed to remove debug_metadata folder: {e}")
+                message_queue.put(("error", "Error", f"Failed to remove debug_metadata folder: {e}"))
+
         progress_var.set(100)
         progress_bar["value"] = 100
         message_queue.put(("progress", None, "100%"))
@@ -591,9 +601,9 @@ def on_closing(root, message_queue):
     save_config()
     logger.info("Configuration saved. Exiting application.")
     root.destroy()
-        
-        
-        
+
+
+
 def handle_single_file_drop(event, file_var, message_queue):
     try:
         dropped_path = event.data.strip("{}")
@@ -752,6 +762,16 @@ def split_single_file(message_queue):
             progress_var.set(progress)
             message_queue.put(("progress", None, f"{progress}%"))
             progress_bar.update_idletasks()
+
+        # Remove debug_metadata folder after splitting
+        debug_metadata_path = os.path.join(output_dir, "debug_metadata")
+        if os.path.exists(debug_metadata_path):
+            try:
+                shutil.rmtree(debug_metadata_path)
+                logger.debug(f"Removed debug_metadata folder at {debug_metadata_path}")
+            except Exception as e:
+                logger.error(f"Failed to remove debug_metadata folder: {e}")
+                message_queue.put(("error", "Error", f"Failed to remove debug_metadata folder: {e}"))
 
         progress_var.set(100)
         progress_bar["value"] = 100
@@ -1675,7 +1695,6 @@ def main():
         )
 
         
-    
 
         # Simplified unified processing function
         def unified_split_processing(input_path, output_dir, selected_channels, message_queue, is_batch=False):
@@ -1698,7 +1717,7 @@ def main():
                     else None
                 )
                 naming_scheme = naming_scheme_var.get()
-                custom_names = custom_names_var.get().split(",") if naming_scheme == "custom" else []
+                custom_names = naming_scheme_var.get().split(",") if naming_scheme == "custom" else []
                 custom_names = [name.strip() for name in custom_names]
 
                 # Get list of files to process
@@ -1781,6 +1800,16 @@ def main():
                     progress_var.set(progress)
                     message_queue.put(("progress", None, f"{progress}%"))
 
+                # Remove debug_metadata folder after processing all files
+                debug_metadata_path = os.path.join(output_dir, "debug_metadata")
+                if os.path.exists(debug_metadata_path):
+                    try:
+                        shutil.rmtree(debug_metadata_path)
+                        logger.debug(f"Removed debug_metadata folder at {debug_metadata_path}")
+                    except Exception as e:
+                        logger.error(f"Failed to remove debug_metadata folder: {e}")
+                        message_queue.put(("error", "Error", f"Failed to remove debug_metadata folder: {e}"))
+
                 # Show detailed completion report
                 full_report = "\n".join([
                     "=== Processing Summary ===",
@@ -1799,7 +1828,7 @@ def main():
                 message_queue.put(("error", "Error", f"Critical error occurred:\n{str(e)}\n\nFull diagnostic report:\n{''.join(diagnostic_reports)}" if 'diagnostic_reports' in locals() else str(e)))
             finally:
                 message_queue.put(("enable_buttons", None, None))
-        
+    
 
         def process_queue():
             try:
