@@ -629,7 +629,6 @@ def browse_single_file(message_queue):
 
 def split_single_file(message_queue):
     split_button.config(state="disabled")
-    # Removed disabling of Open buttons to keep them enabled during splitting
     open_output_button.config(state="disabled")  # Temporarily disable if needed
     open_input_file_button.config(state="disabled")  # Temporarily disable if needed
     try:
@@ -718,10 +717,11 @@ def split_single_file(message_queue):
         progress_bar.config(maximum=100)
 
         naming_scheme = naming_scheme_var.get()
-        custom_names = naming_scheme_var.get().split(",") if naming_scheme == "custom" else []
+        custom_names = (
+            custom_names_var.get().split(",") if naming_scheme == "custom" else []
+        )
         custom_names = [name.strip() for name in custom_names]
 
-        # Optional: Validate that there are enough custom names
         if naming_scheme == "custom" and len(custom_names) < total_channels:
             logger.warning(
                 "Not enough custom names provided. Some channels will use default naming."
@@ -733,11 +733,11 @@ def split_single_file(message_queue):
         logger.debug(f"Custom Names: {custom_names}")
 
         for idx in selected_channels:
-            output_filename = (
-                f"{os.path.splitext(os.path.basename(file_path))[0]}_chan{idx + 1}.wav"
-            )
-            if naming_scheme == "custom" and (idx) < len(custom_names):
-                output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_{custom_names[idx].strip()}.wav"
+            if naming_scheme == "custom" and idx < len(custom_names):
+                output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_{custom_names[idx]}.wav"
+            else:
+                output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_chan{idx + 1}.wav"
+
             output_file = os.path.join(output_dir, output_filename)
             run_ffmpeg_with_metadata(
                 file_path,
@@ -756,7 +756,6 @@ def split_single_file(message_queue):
             progress_var.set(progress)
             message_queue.put(("progress", None, f"{progress}%"))
 
-        # Remove debug_metadata folder after splitting
         debug_metadata_path = os.path.join(output_dir, "debug_metadata")
         if os.path.exists(debug_metadata_path):
             try:
@@ -770,7 +769,6 @@ def split_single_file(message_queue):
         progress_bar["value"] = 100
         message_queue.put(("progress", None, "100%"))
 
-        # Replace detailed summary with "SUCCESS!"
         message_queue.put(
             (
                 "info",
@@ -783,8 +781,8 @@ def split_single_file(message_queue):
         message_queue.put(("error", "Error", f"An unexpected error occurred:\n{e}"))
     finally:
         split_button.config(state="normal")
-        open_output_button.config(state="normal")  # Re-enable after split
-        open_input_file_button.config(state="normal")  # Re-enable after split
+        open_output_button.config(state="normal")
+        open_input_file_button.config(state="normal")
 
 def run_ffmpeg_with_metadata(input_file, channel_idx, output_file, override_bit_depth=None, override_sample_rate=None):
     """
