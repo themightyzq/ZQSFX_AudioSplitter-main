@@ -89,7 +89,7 @@ def setup_logging():
     try:
         log_file_path = get_log_file_path()
         logging.basicConfig(
-            level=logging.DEBUG,
+            level=logging.WARNING,
             format="%(asctime)s - %(levelname)s - %(message)s",
             handlers=[
                 logging.FileHandler(log_file_path),
@@ -98,7 +98,7 @@ def setup_logging():
         )
     except Exception as e:
         logging.basicConfig(
-            level=logging.DEBUG,
+            level=logging.WARNING,
             format="%(asctime)s - %(levelname)s - %(message)s",
             handlers=[logging.StreamHandler(sys.stdout)],
         )
@@ -978,9 +978,17 @@ def update_channel_checkboxes():
             logger.debug("File path is invalid or does not exist.")
             return
 
-        # Use pydub to get the number of channels
-        audio = AudioSegment.from_file(file_path)
-        total_channels = audio.channels
+        # Use ffprobe to get the number of channels quickly
+        cmd = [
+            ffprobe_path,
+            "-v", "error",
+            "-select_streams", "a:0",
+            "-show_entries", "stream=channels",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            file_path
+        ]
+        output = subprocess.check_output(cmd).decode().strip()
+        total_channels = int(output)
         logger.debug(f"Number of channels from audio file: {total_channels}")
 
         for channel_idx, chk in channel_checkboxes:
