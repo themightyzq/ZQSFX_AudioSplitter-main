@@ -395,7 +395,21 @@ def split_audio_files(
         logger.debug(traceback.format_exc())
         message_queue.put(("error", "Error", f"An unexpected error occurred:\n{e}"))
     finally:
-        message_queue.put(("enable_buttons", None, None))
+        split_button.config(state="normal")  # Re-enable the split button
+
+def open_output_directory(output_dir):
+    try:
+        if os.name == "nt":
+            os.startfile(output_dir)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", output_dir])
+        else:
+            subprocess.Popen(["xdg-open", output_dir])
+        logger.debug(f"Opened output directory: {output_dir}")
+    except Exception as e:
+        logger.error(f"Failed to open output directory '{output_dir}': {e}")
+        logger.debug(traceback.format_exc())
+        messagebox.showerror("Error", f"Failed to open output directory:\n{e}")
 
 def browse_input_dir(message_queue):
     global last_dir
