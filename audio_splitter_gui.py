@@ -1,18 +1,40 @@
 #!/usr/bin/env python3
-
 import os
 import sys
-import logging
-import traceback
-import threading
-import queue
-import struct
-import xml.etree.ElementTree as ET
-from datetime import datetime
-import tempfile
-import shutil
-from tkinterdnd2 import TkinterDnD, DND_FILES
+
+# --- Resource Path Setup for tkdnd ---
+def resource_path(relative_path):
+    """
+    Get the absolute path to a resource, works for development and PyInstaller.
+    """
+    try:
+        # PyInstaller stores temporary path in sys._MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+# Set the TKDND_LIBRARY environment variable before importing tkinterdnd2
+if getattr(sys, "frozen", False):
+    tkdnd_path = resource_path("tkdnd")
+else:
+    tkdnd_path = os.path.join(os.path.dirname(__file__), "tkdnd")
+os.environ["TKDND_LIBRARY"] = tkdnd_path
+
+# Optionally, add the tkdnd folder to sys.path
+if tkdnd_path not in sys.path:
+    sys.path.append(tkdnd_path)
+
+# --- Import tkinterdnd2 and other modules ---
+try:
+    from tkinterdnd2 import TkinterDnD, DND_FILES
+except ImportError as e:
+    print(f"Error importing tkinterdnd2: {e}")
+    sys.exit(1)
+
+import tkinter as tk
 from tkinter import (
+    ttk,
     Label,
     Entry,
     StringVar,
@@ -26,16 +48,23 @@ from tkinter import (
     LabelFrame,
     Toplevel,
 )
-from tkinter import ttk
+import logging
+import traceback
+import threading
+import queue
+import struct
+import xml.etree.ElementTree as ET
+from datetime import datetime
+import tempfile
+import shutil
 from pydub import AudioSegment
 from pydub.utils import which
 import subprocess
 import json
 
-# Define channel_checkboxes globally
-channel_checkboxes = []
-# Declare notebook as a global variable
-notebook = None
+# --- Global Variables ---
+channel_checkboxes = []  # Used to store channel checkbox widgets
+notebook = None          # Global variable for the main notebook widget
 
 def resource_path(relative_path):
     try:
