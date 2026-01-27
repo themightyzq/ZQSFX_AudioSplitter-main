@@ -47,6 +47,11 @@ public:
      */
     void resized() override;
 
+    /**
+     * Handle keyboard shortcuts (Cmd+Return to split)
+     */
+    bool keyPressed(const juce::KeyPress& key) override;
+
     //==============================================================================
     // Tab management - mirrors Python notebook behavior
     
@@ -133,12 +138,6 @@ private:
     
     // Modern UI theme
     std::unique_ptr<ModernLookAndFeel> modernLookAndFeel;
-    
-    //==============================================================================
-    // Colors - mirrors Python color constants (lines 1060-1062)
-    static const juce::Colour backgroundColour;
-    static const juce::Colour foregroundColour;
-    static const juce::Colour accentColour;
     
     //==============================================================================
     // Helper methods

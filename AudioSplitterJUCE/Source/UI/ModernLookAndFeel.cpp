@@ -193,16 +193,18 @@ void ModernLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label)
         g.fillRect(bounds);
     }
     
-    // Text
-    auto font = Typography::getBodyFont();
+    // Text -- respect the label's own font if explicitly set, otherwise use design system default
+    auto font = label.getFont();
+    if (font.getHeight() < 1.0f)
+        font = Typography::getBodyFont();
     g.setFont(font);
-    
+
     auto textColour = label.findColour(juce::Label::textColourId);
     if (!label.isEnabled())
         textColour = Colors::textDisabled;
-        
+
     g.setColour(textColour);
-    
+
     auto textBounds = bounds.reduced(Spacing::xs);
     g.drawFittedText(label.getText(), textBounds, label.getJustificationType(), 1);
 }
@@ -282,14 +284,25 @@ void ModernLookAndFeel::drawTabButton(juce::TabBarButton& button, juce::Graphics
         
     g.setColour(textColour);
     
-    auto textBounds = bounds.reduced(Spacing::md, Spacing::sm).toNearestInt();
+    auto textBounds = bounds.reduced(Spacing::sm, Spacing::xs).toNearestInt();
     g.drawFittedText(button.getButtonText(), textBounds, juce::Justification::centred, 1);
-    
+
     // Focus ring
     if (button.hasKeyboardFocus(true))
     {
         drawFocusRing(g, bounds.toNearestInt(), 2);
     }
+}
+
+//==============================================================================
+int ModernLookAndFeel::getTabButtonBestWidth(juce::TabBarButton& button, int /*tabDepth*/)
+{
+    // Use the larger font (subheading) for width calculation to prevent truncation
+    auto font = Typography::getSubheadingFont();
+    juce::GlyphArrangement glyphs;
+    glyphs.addLineOfText(font, button.getButtonText(), 0.0f, 0.0f);
+    int textWidth = (int)std::ceil(glyphs.getBoundingBox(0, -1, false).getWidth());
+    return textWidth + Spacing::lg * 2; // 24px padding each side
 }
 
 //==============================================================================
@@ -407,7 +420,21 @@ void ModernLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& 
 void ModernLookAndFeel::drawFocusRing(juce::Graphics& g, const juce::Rectangle<int>& bounds, int thickness)
 {
     g.setColour(Colors::borderFocus);
-    g.drawRect(bounds, thickness);
+    g.drawRoundedRectangle(bounds.toFloat().reduced(thickness * 0.5f), 6.0f, static_cast<float>(thickness));
+}
+
+//==============================================================================
+void ModernLookAndFeel::drawDropZoneHint(juce::Graphics& g, const juce::Rectangle<int>& bounds,
+                                         const juce::String& hintText)
+{
+    auto area = bounds.reduced(Spacing::xl);
+
+    g.setColour(Colors::border);
+    g.drawRoundedRectangle(area.toFloat(), 8.0f, 1.5f);
+
+    g.setColour(Colors::textSecondary);
+    g.setFont(Typography::getSubheadingFont());
+    g.drawText(hintText, area, juce::Justification::centred, true);
 }
 
 //==============================================================================

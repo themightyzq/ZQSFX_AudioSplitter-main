@@ -89,13 +89,24 @@ SingleFileSplitter::SingleFileSplitter(ConfigManager* config)
 //==============================================================================
 SingleFileSplitter::~SingleFileSplitter()
 {
+    // Signal async callbacks that this object is gone
+    aliveFlag->store(false);
+
+    // Cancel any in-progress processing and wait for thread to exit
+    if (audioProcessor && audioProcessor->isProcessing())
+    {
+        audioProcessor->cancelProcessing();
+    }
 }
 
 //==============================================================================
 void SingleFileSplitter::paint(juce::Graphics& g)
 {
-    // Use modern background color
     g.fillAll(ModernLookAndFeel::Colors::background);
+
+    // Draw drop zone hint when no file is loaded
+    if (currentFilePath.isEmpty())
+        ModernLookAndFeel::drawDropZoneHint(g, getLocalBounds(), "Drop a WAV file here or click Browse");
 }
 
 //==============================================================================
@@ -138,45 +149,46 @@ void SingleFileSplitter::resized()
     
     // Channel selection group - takes remaining space
     channelGroup.setBounds(bounds);
-    
+
+    // Layout inside the group: all coordinates in SingleFileSplitter space
+    // (label, helpers, count are SingleFileSplitter children drawn over the group)
     auto channelBounds = bounds.reduced(margin);
-    channelBounds.removeFromTop(20); // group header space
+    channelBounds.removeFromTop(28); // group header (drawGroupComponentOutline uses 24px header)
     channelSelectionLabel.setBounds(channelBounds.removeFromTop(rowHeight));
 
-    // Channel selection helper buttons row (Phase 2 UI/UX improvement)
+    // Channel selection helper buttons row
     auto helperRow = channelBounds.removeFromTop(rowHeight);
-
-    // Left side: helper buttons
     selectAllButton.setBounds(helperRow.removeFromLeft(kHelperButtonWidth));
     helperRow.removeFromLeft(spacing);
     selectNoneButton.setBounds(helperRow.removeFromLeft(kHelperButtonWidth));
     helperRow.removeFromLeft(spacing);
     invertSelectionButton.setBounds(helperRow.removeFromLeft(kHelperButtonWidth));
-
-    // Right side: channel count label
     channelCountLabel.setBounds(helperRow);
 
-    channelBounds.removeFromTop(spacing); // spacing before channel grid
+    channelBounds.removeFromTop(spacing);
 
-    // Layout channel buttons in a responsive grid
+    // Channel buttons are children of channelGroup, so position in channelGroup-local coords
     if (channelButtons.size() > 0)
     {
-        // Calculate responsive button layout
+        // Offset from channelGroup origin to the grid area
+        int gridOffsetX = channelBounds.getX() - channelGroup.getX();
+        int gridOffsetY = channelBounds.getY() - channelGroup.getY();
+
         int availableWidth = channelBounds.getWidth();
-        int minButtonWidth = 120;  // Minimum width for readability
-        int buttonsPerRow = juce::jmax(1, availableWidth / (minButtonWidth + spacing));
-        int buttonWidth = (availableWidth - (buttonsPerRow - 1) * spacing) / buttonsPerRow;
-        int buttonHeight = juce::jmax(35, rowHeight); // Increased minimum height from 25 to 35
-        
+        int minChBtnWidth = 120;
+        int buttonsPerRow = juce::jmax(1, availableWidth / (minChBtnWidth + spacing));
+        int chBtnWidth = (availableWidth - (buttonsPerRow - 1) * spacing) / buttonsPerRow;
+        int chBtnHeight = juce::jmax(35, rowHeight);
+
         for (int i = 0; i < channelButtons.size(); ++i)
         {
-            int row = i / buttonsPerRow;
-            int col = i % buttonsPerRow;
-            
-            int x = col * (buttonWidth + spacing);
-            int y = row * (buttonHeight + spacing);
-            
-            channelButtons[i]->setBounds(x, y, buttonWidth, buttonHeight);
+            int r = i / buttonsPerRow;
+            int c = i % buttonsPerRow;
+
+            int x = gridOffsetX + c * (chBtnWidth + spacing);
+            int y = gridOffsetY + r * (chBtnHeight + spacing);
+
+            channelButtons[i]->setBounds(x, y, chBtnWidth, chBtnHeight);
         }
     }
 }
@@ -407,16 +419,34 @@ void SingleFileSplitter::startProcessing()
 
     juce::Logger::writeToLog("Starting audio processing with " + juce::String(selectedChannels.size()) +
                             " channels from: " + currentFilePath);
-    
-    // Start processing with progress callbacks
+
+    // Show cancel button in progress panel during single-file processing
+    if (auto* mainComponent = findParentComponentOfClass<MainComponent>())
+    {
+        if (auto* progressPanel = mainComponent->getProgressPanel())
+        {
+            progressPanel->onCancelRequested = [this]()
+            {
+                if (audioProcessor && audioProcessor->isProcessing())
+                    audioProcessor->cancelProcessing();
+            };
+            progressPanel->setSimpleModeCancelVisible(true);
+        }
+    }
+
+    // Start processing with alive-flag-protected callbacks
+    auto weak = std::weak_ptr<std::atomic<bool>>(aliveFlag);
+
     audioProcessor->startProcessing(options,
-                                   [this](double progress, const juce::String& message)
+                                   [this, weak](double progress, const juce::String& message)
                                    {
-                                       onProcessingProgress(progress, message);
+                                       if (auto alive = weak.lock(); alive && alive->load())
+                                           onProcessingProgress(progress, message);
                                    },
-                                   [this](const AudioFileProcessor::ProcessingResult& result)
+                                   [this, weak](const AudioFileProcessor::ProcessingResult& result)
                                    {
-                                       onProcessingComplete(result);
+                                       if (auto alive = weak.lock(); alive && alive->load())
+                                           onProcessingComplete(result);
                                    });
 }
 
@@ -703,6 +733,16 @@ void SingleFileSplitter::onProcessingProgress(double progress, const juce::Strin
 
 void SingleFileSplitter::onProcessingComplete(const AudioFileProcessor::ProcessingResult& result)
 {
+    // Hide cancel button and reset progress panel
+    if (auto* mainComponent = findParentComponentOfClass<MainComponent>())
+    {
+        if (auto* progressPanel = mainComponent->getProgressPanel())
+        {
+            progressPanel->setSimpleModeCancelVisible(false);
+            progressPanel->resetProgress();
+        }
+    }
+
     if (result.success)
     {
         juce::String message = "Processing completed successfully!\n\n";

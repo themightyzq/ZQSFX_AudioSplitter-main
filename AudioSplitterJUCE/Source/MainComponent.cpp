@@ -1,12 +1,6 @@
 #include "MainComponent.h"
 
 //==============================================================================
-// Color constants - mirrors Python color definitions (lines 1060-1062)
-const juce::Colour MainComponent::backgroundColour = juce::Colour(0xff2c2c2c); // "#2C2C2C"
-const juce::Colour MainComponent::foregroundColour = juce::Colour(0xffffffff); // "#FFFFFF"
-const juce::Colour MainComponent::accentColour = juce::Colour(0xff3c3c3c);     // "#3C3C3C"
-
-//==============================================================================
 MainComponent::MainComponent(ConfigManager* config)
     : configManager(config),
       tabbedComponent(juce::TabbedButtonBar::TabsAtTop), // mirrors Python notebook orientation
@@ -44,6 +38,7 @@ MainComponent::MainComponent(ConfigManager* config)
         false  // start expanded
     );
 
+    collapsibleUCSPanel->setContentHeight(250);
     collapsibleUCSPanel->onCollapseChanged = [this](bool /*isCollapsed*/) {
         resized();  // Re-layout when panel collapses/expands
     };
@@ -58,6 +53,9 @@ MainComponent::MainComponent(ConfigManager* config)
     // Don't set size here - let the parent window control the size
     // The MainWindow will set the appropriate size
     
+    // Enable keyboard focus so Cmd+Return shortcut works
+    setWantsKeyboardFocus(true);
+
     // Initial UI state update - mirrors Python initial state
     updateButtonStates();
     
@@ -87,44 +85,63 @@ void MainComponent::resized()
     if (!collapsibleOptionsPanel || !progressPanel || !collapsibleUCSPanel)
         return;
 
-    // Layout using modern spacing system - generous spacing for proper UI display
-    const int margin = ModernLookAndFeel::Spacing::md;           // 16px modern spacing
-    const int minOptionsHeight = 180;                            // Reduced since UCS panel is separate
-    const int minUCSHeight = 200;                                // UCS naming panel height
-    const int minProgressHeight = 100;                           // Larger for better visibility
-    const int minButtonHeight = 60;                              // Larger for better touch targets
-
-    // Calculate responsive heights based on available space
-    int totalHeight = bounds.getHeight() - (margin * 2);
-    int optionsPanelHeight = juce::jmax(minOptionsHeight, totalHeight / 5);     // 1/5 of height
-    int ucsPanelHeight = juce::jmax(minUCSHeight, totalHeight / 5);             // 1/5 of height
-    int progressPanelHeight = juce::jmax(minProgressHeight, totalHeight / 10);  // 1/10 of height
-    // PRIMARY ACTION BUTTON: Make it LARGE and OBVIOUS (increased from 1/15 to 1/12 of height)
-    int buttonHeight = juce::jmax(50, totalHeight / 12);  // Minimum 50px, larger proportion
+    const int margin = ModernLookAndFeel::Spacing::md;   // 16px
+    const int spacing = ModernLookAndFeel::Spacing::sm;   // 8px
+    const int buttonHeight = 44;
+    const int progressHeight = 60;
+    const int minTabHeight = 200;  // Tabs must always be at least this tall
 
     bounds.reduce(margin, margin);
 
-    // Split button at bottom - prominent primary action
-    splitButton.setBounds(bounds.removeFromBottom(buttonHeight).reduced(ModernLookAndFeel::Spacing::sm));
-    bounds.removeFromBottom(ModernLookAndFeel::Spacing::sm); // spacing
+    // Fixed bottom elements: split button + progress panel
+    splitButton.setBounds(bounds.removeFromBottom(buttonHeight).reduced(spacing, 0));
+    bounds.removeFromBottom(spacing);
 
-    // Progress panel above button - modern spacing
-    progressPanel->setBounds(bounds.removeFromBottom(progressPanelHeight));
-    bounds.removeFromBottom(ModernLookAndFeel::Spacing::sm); // spacing
+    progressPanel->setBounds(bounds.removeFromBottom(progressHeight));
+    bounds.removeFromBottom(spacing);
 
-    // COLLAPSIBLE PANELS: Use ideal height (accounts for collapsed/expanded state)
-    // UCS naming panel above progress (dynamically sized)
-    ucsPanelHeight = collapsibleUCSPanel->getIdealHeight();
-    collapsibleUCSPanel->setBounds(bounds.removeFromBottom(ucsPanelHeight));
-    bounds.removeFromBottom(ModernLookAndFeel::Spacing::sm); // spacing
+    // Collapsible panels: proportional scaling if they don't fit
+    int idealUCS = collapsibleUCSPanel->getIdealHeight();
+    int idealOptions = collapsibleOptionsPanel->getIdealHeight();
+    int totalPanelIdeal = idealUCS + idealOptions + spacing;
+    int availableForPanels = bounds.getHeight() - minTabHeight - spacing * 2;
 
-    // Options panel above UCS naming (dynamically sized)
-    optionsPanelHeight = collapsibleOptionsPanel->getIdealHeight();
-    collapsibleOptionsPanel->setBounds(bounds.removeFromBottom(optionsPanelHeight));
-    bounds.removeFromBottom(ModernLookAndFeel::Spacing::sm); // spacing
+    int ucsHeight, optionsHeight;
+    if (totalPanelIdeal <= availableForPanels)
+    {
+        // Panels fit at ideal size
+        ucsHeight = idealUCS;
+        optionsHeight = idealOptions;
+    }
+    else
+    {
+        // Scale panels down proportionally to guarantee minimum tab height
+        float scale = juce::jmax(0.3f, (float)availableForPanels / (float)juce::jmax(1, totalPanelIdeal));
+        ucsHeight = (int)(idealUCS * scale);
+        optionsHeight = (int)(idealOptions * scale);
+    }
 
-    // Tabs take remaining space - mirrors Python notebook.pack(fill="both", expand=True)
+    collapsibleUCSPanel->setBounds(bounds.removeFromBottom(ucsHeight));
+    bounds.removeFromBottom(spacing);
+
+    collapsibleOptionsPanel->setBounds(bounds.removeFromBottom(optionsHeight));
+    bounds.removeFromBottom(spacing);
+
+    // Tabs take remaining space
     tabbedComponent.setBounds(bounds);
+}
+
+//==============================================================================
+bool MainComponent::keyPressed(const juce::KeyPress& key)
+{
+    // Cmd+Return (macOS) / Ctrl+Return (Windows) triggers the split action
+    if (key == juce::KeyPress(juce::KeyPress::returnKey, juce::ModifierKeys::commandModifier, 0))
+    {
+        if (splitButton.isEnabled())
+            splitButtonClicked();
+        return true;
+    }
+    return false;
 }
 
 //==============================================================================
@@ -145,21 +162,21 @@ void MainComponent::setupTabs()
     
     // Add tabs with same names and colors as Python
     tabbedComponent.addTab(
-        "Split Single File",        // mirrors Python text (line 1209)
-        backgroundColour,           // tab background
-        singleFileSplitter.get(),   // tab content
-        false                       // don't delete on removal
+        "Single File",              // concise tab label
+        ModernLookAndFeel::Colors::background,
+        singleFileSplitter.get(),
+        false
     );
-    
+
     tabbedComponent.addTab(
-        "Batch Split",              // mirrors Python text (line 1210)
-        backgroundColour,           // tab background  
+        "Batch",                    // concise tab label
+        ModernLookAndFeel::Colors::background,  
         batchSplitter.get(),        // tab content
         false                       // don't delete on removal
     );
     
     // Set tab change callback - mirrors Python tab selection handling
-    tabbedComponent.setTabBarDepth(30); // reasonable tab height
+    tabbedComponent.setTabBarDepth(36); // tall enough for readable text
     
     // Set initial tab (mirrors Python default selection)
     tabbedComponent.setCurrentTabIndex(0);
@@ -186,6 +203,7 @@ void MainComponent::setupOptionsPanel()
         false  // start expanded
     );
 
+    collapsibleOptionsPanel->setContentHeight(200);
     collapsibleOptionsPanel->onCollapseChanged = [this](bool /*isCollapsed*/) {
         resized();  // Re-layout when panel collapses/expands
     };
@@ -202,7 +220,7 @@ void MainComponent::setupProgressPanel()
 void MainComponent::setupSplitButton()
 {
     // Configure split button as PRIMARY ACTION - large, obvious, impossible to miss
-    splitButton.setButtonText("✓ SPLIT FILES");  // Clear, action-oriented text with checkmark
+    splitButton.setButtonText("SPLIT FILES");
     splitButton.setEnabled(false); // mirrors Python initial state="disabled" (line 1727)
 
     // Make it visually prominent as primary action
@@ -284,10 +302,35 @@ void MainComponent::updateButtonStates()
         }
     }
     
-    // Update button state - mirrors Python button enable/disable logic
+    // Update button state and tooltip
     splitButton.setEnabled(enableSplit);
-    
-    juce::Logger::writeToLog("Button states updated - Split enabled: " + 
+
+    if (enableSplit)
+    {
+        splitButton.setTooltip("Split audio file(s) into individual channel files (Cmd+Return)");
+    }
+    else
+    {
+        // Explain why the button is disabled
+        if (currentTab == 0)
+        {
+            juce::String singleFilePath = singleFileSplitter->getSelectedFile();
+            if (singleFilePath.isEmpty() || !juce::File(singleFilePath).existsAsFile())
+                splitButton.setTooltip("Select a valid WAV file to enable splitting");
+            else
+                splitButton.setTooltip("Select a valid output directory to enable splitting");
+        }
+        else
+        {
+            juce::String inputDir = batchSplitter->getInputDirectory();
+            if (inputDir.isEmpty() || !juce::File(inputDir).isDirectory())
+                splitButton.setTooltip("Select a valid input directory to enable splitting");
+            else
+                splitButton.setTooltip("Select a valid output directory to enable splitting");
+        }
+    }
+
+    juce::Logger::writeToLog("Button states updated - Split enabled: " +
                             juce::String(enableSplit ? "true" : "false"));
 }
 
@@ -306,18 +349,27 @@ void MainComponent::splitButtonClicked()
 {
     // Mirror Python split_based_on_tab() function (lines 1888-1895, 1917-1924)
     
+    // Disable button to prevent double-click launching concurrent processes
+    splitButton.setEnabled(false);
+
     int currentTab = getCurrentTab();
-    
+
     if (currentTab == 0) // "Split Single File"
     {
-        // Mirror Python single file processing (line 1891-1893)
         singleFileSplitter->startProcessing();
     }
     else if (currentTab == 1) // "Batch Split"
     {
-        // Mirror Python batch processing (line 1895)
         batchSplitter->startProcessing();
     }
-    
+
     juce::Logger::writeToLog("Split processing started for tab: " + juce::String(currentTab));
+
+    // Re-enable after a short delay (processing callbacks will manage final state)
+    auto weak = juce::Component::SafePointer<MainComponent>(this);
+    juce::Timer::callAfterDelay(1000, [weak]()
+    {
+        if (auto* self = weak.getComponent())
+            self->updateButtonStates();
+    });
 }

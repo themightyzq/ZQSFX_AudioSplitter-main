@@ -43,6 +43,18 @@ ProgressPanel::ProgressPanel()
     setupLabel(timeInfoLabel, "");
     setupLabel(speedLabel, "");
 
+    // Setup cancel button (hidden by default, shown during batch processing)
+    cancelButton.setButtonText("Cancel");
+    cancelButton.setColour(juce::TextButton::buttonColourId, ModernLookAndFeel::Colors::error);
+    cancelButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    cancelButton.setVisible(false);
+    cancelButton.onClick = [this]()
+    {
+        if (onCancelRequested)
+            onCancelRequested();
+    };
+    addAndMakeVisible(cancelButton);
+
     // Initialize state
     resetProgress();
 
@@ -73,17 +85,18 @@ void ProgressPanel::resized()
 
     if (isBatchMode)
     {
-        // Batch mode: Show all progress info
-        // Layout: filesLabel, currentFileLabel, progressBar, timeInfoLabel, speedLabel
-
+        // Batch mode: Show all progress info + cancel button
         filesLabel.setBounds(bounds.removeFromTop(LABEL_HEIGHT));
         bounds.removeFromTop(spacing);
 
         currentFileLabel.setBounds(bounds.removeFromTop(LABEL_HEIGHT));
         bounds.removeFromTop(spacing);
 
-        // Progress bar
-        progressBar.setBounds(bounds.removeFromTop(PROGRESS_BAR_HEIGHT));
+        // Progress bar with cancel button on the right
+        auto progressRow = bounds.removeFromTop(PROGRESS_BAR_HEIGHT);
+        cancelButton.setBounds(progressRow.removeFromRight(80));
+        progressRow.removeFromRight(spacing);
+        progressBar.setBounds(progressRow);
         bounds.removeFromTop(spacing);
 
         timeInfoLabel.setBounds(bounds.removeFromTop(LABEL_HEIGHT));
@@ -93,10 +106,21 @@ void ProgressPanel::resized()
     }
     else
     {
-        // Simple mode: Just label and progress bar
+        // Simple mode: label + progress bar (+ optional cancel button)
         progressLabel.setBounds(bounds.removeFromTop(LABEL_HEIGHT));
         bounds.removeFromTop(spacing);
-        progressBar.setBounds(bounds);
+
+        if (cancelButton.isVisible())
+        {
+            auto progressRow = bounds.removeFromTop(PROGRESS_BAR_HEIGHT);
+            cancelButton.setBounds(progressRow.removeFromRight(80));
+            progressRow.removeFromRight(spacing);
+            progressBar.setBounds(progressRow);
+        }
+        else
+        {
+            progressBar.setBounds(bounds);
+        }
     }
 }
 
@@ -170,16 +194,28 @@ void ProgressPanel::resetProgress()
     batchTotalFiles = 0;
     batchCurrentFile.clear();
 
-    // Hide batch labels, show simple label
+    // Hide batch labels and cancel button, show simple label
     filesLabel.setVisible(false);
     currentFileLabel.setVisible(false);
     timeInfoLabel.setVisible(false);
     speedLabel.setVisible(false);
+    cancelButton.setVisible(false);
     progressLabel.setVisible(true);
 
     updateProgressDisplay();
     stopTimer();
     resized();  // Re-layout for simple mode
+}
+
+void ProgressPanel::setSimpleModeCancelVisible(bool visible)
+{
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+    if (!isBatchMode)
+    {
+        cancelButton.setVisible(visible);
+        resized();
+    }
 }
 
 void ProgressPanel::setIndeterminate(bool indeterminate)
@@ -279,6 +315,7 @@ void ProgressPanel::updateBatchProgress(double overallProgress,
         currentFileLabel.setVisible(true);
         timeInfoLabel.setVisible(true);
         speedLabel.setVisible(true);
+        cancelButton.setVisible(true);
         progressLabel.setVisible(false);
         resized();  // Re-layout UI for batch mode
     }

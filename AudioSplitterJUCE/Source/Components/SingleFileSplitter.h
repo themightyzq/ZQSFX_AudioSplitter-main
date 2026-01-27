@@ -122,6 +122,9 @@ private:
     void onProcessingProgress(double progress, const juce::String& message);
     void onProcessingComplete(const AudioFileProcessor::ProcessingResult& result);
     
+    // Prevent dangling this in async callbacks
+    std::shared_ptr<std::atomic<bool>> aliveFlag = std::make_shared<std::atomic<bool>>(true);
+
     // File choosers - need to be member variables to stay in scope
     std::unique_ptr<juce::FileChooser> fileChooser;
     std::unique_ptr<juce::FileChooser> outputDirChooser;

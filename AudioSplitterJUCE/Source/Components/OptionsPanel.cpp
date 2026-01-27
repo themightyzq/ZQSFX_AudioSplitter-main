@@ -112,69 +112,63 @@ void OptionsPanel::paint(juce::Graphics& g)
 void OptionsPanel::resized()
 {
     auto bounds = getLocalBounds();
-    const int margin = ModernLookAndFeel::Spacing::md;           // 16px modern spacing
-    const int minGroupHeight = 150;                              // Further increased for proper dropdown display
-    const int spacing = ModernLookAndFeel::Spacing::sm;          // 8px modern spacing
-    
-    // Calculate responsive group height based on available space
-    int groupHeight = juce::jmax(minGroupHeight, bounds.getHeight() / 4);  // Adjusted ratio for better fit
-    
-    bounds.reduce(margin, margin);
-    
-    // Layout in columns to match Python grid layout
-    auto leftColumn = bounds.removeFromLeft(bounds.getWidth() / 3);
-    auto middleColumn = bounds.removeFromLeft(bounds.getWidth() / 2);
-    auto rightColumn = bounds;
-    
+    const int spacing = ModernLookAndFeel::Spacing::sm;  // 8px
+
+    // Tight vertical padding to maximize content area
+    bounds.reduce(spacing, spacing);
+
+    // Top section: 3 columns for Sample Rate, Bit Depth, Options groups
+    // Fixed height accommodates: title(20) + padding(16) + toggle(25) + gap(4) + label(20) + gap(4) + combo(30) + padding = 127
+    const int groupHeight = 130;
+    auto topSection = bounds.removeFromTop(groupHeight);
+
+    auto leftCol = topSection.removeFromLeft(topSection.getWidth() / 3);
+    auto midCol = topSection.removeFromLeft(topSection.getWidth() / 2);
+    auto rightCol = topSection;
+
     // Sample rate group - left column
-    auto sampleRateArea = leftColumn.removeFromTop(groupHeight);
-    sampleRateGroup.setBounds(sampleRateArea);
-    // Start positioning from inside the group, accounting for the title
-    auto sampleRateInner = sampleRateArea;
-    sampleRateInner.removeFromTop(20); // Space for group title
-    sampleRateInner = sampleRateInner.reduced(spacing, spacing);
-    
-    overrideSampleRateToggle.setBounds(sampleRateInner.removeFromTop(25));
-    sampleRateInner.removeFromTop(5);  // Add spacing
-    sampleRateLabel.setBounds(sampleRateInner.removeFromTop(20));
-    sampleRateInner.removeFromTop(5);  // Add spacing
-    sampleRateCombo.setBounds(sampleRateInner.removeFromTop(35));  // Taller combo
-    
-    // Bit depth group - middle column  
-    auto bitDepthArea = middleColumn.removeFromTop(groupHeight);
-    bitDepthGroup.setBounds(bitDepthArea);
-    // Start positioning from inside the group, accounting for the title
-    auto bitDepthInner = bitDepthArea;
-    bitDepthInner.removeFromTop(20); // Space for group title
-    bitDepthInner = bitDepthInner.reduced(spacing, spacing);
-    
-    overrideBitDepthToggle.setBounds(bitDepthInner.removeFromTop(25));
-    bitDepthInner.removeFromTop(5);  // Add spacing
-    bitDepthLabel.setBounds(bitDepthInner.removeFromTop(20));
-    bitDepthInner.removeFromTop(5);  // Add spacing
-    bitDepthCombo.setBounds(bitDepthInner.removeFromTop(35));  // Taller combo
-    
+    sampleRateGroup.setBounds(leftCol);
+    auto srInner = leftCol;
+    srInner.removeFromTop(20); // group title space
+    srInner = srInner.reduced(spacing, spacing);
+    overrideSampleRateToggle.setBounds(srInner.removeFromTop(25));
+    srInner.removeFromTop(4);
+    sampleRateLabel.setBounds(srInner.removeFromTop(20));
+    srInner.removeFromTop(4);
+    sampleRateCombo.setBounds(srInner.removeFromTop(30));
+
+    // Bit depth group - middle column
+    bitDepthGroup.setBounds(midCol);
+    auto bdInner = midCol;
+    bdInner.removeFromTop(20);
+    bdInner = bdInner.reduced(spacing, spacing);
+    overrideBitDepthToggle.setBounds(bdInner.removeFromTop(25));
+    bdInner.removeFromTop(4);
+    bitDepthLabel.setBounds(bdInner.removeFromTop(20));
+    bdInner.removeFromTop(4);
+    bitDepthCombo.setBounds(bdInner.removeFromTop(30));
+
     // Options group - right column
-    auto optionsArea = rightColumn.removeFromTop(groupHeight);
-    optionsGroup.setBounds(optionsArea);
-    auto optionsInner = optionsArea.reduced(spacing * 2, spacing * 2);  // Consistent padding
-    stereoToMonoToggle.setBounds(optionsInner.removeFromTop(20));
-    preserveIXMLToggle.setBounds(optionsInner.removeFromTop(20));
-    channelRemappingToggle.setBounds(optionsInner);
-    
-    // Custom names group - spans full width below
-    leftColumn.removeFromTop(spacing);
-    middleColumn.removeFromTop(spacing);
-    rightColumn.removeFromTop(spacing);
-    
-    auto customNamesArea = getLocalBounds().removeFromBottom(groupHeight).reduced(margin, 0);
-    customNamesGroup.setBounds(customNamesArea);
-    auto customNamesInner = customNamesArea.reduced(spacing * 2, spacing * 2);  // Consistent padding
-    
-    auto customNamesRow = customNamesInner.removeFromTop(30);  // Larger row height
-    customNamesLabel.setBounds(customNamesRow.removeFromLeft(150));  // Wider label
-    customNamesHelpLabel.setBounds(customNamesRow.removeFromRight(150));  // Wider help
-    customNamesEditor.setBounds(customNamesRow);
+    optionsGroup.setBounds(rightCol);
+    auto optInner = rightCol;
+    optInner.removeFromTop(20);
+    optInner = optInner.reduced(spacing, spacing);
+    constexpr int toggleHeight = 28;  // WCAG 2.5.8 minimum target size
+    stereoToMonoToggle.setBounds(optInner.removeFromTop(toggleHeight));
+    preserveIXMLToggle.setBounds(optInner.removeFromTop(toggleHeight));
+    channelRemappingToggle.setBounds(optInner.removeFromTop(toggleHeight));
+
+    bounds.removeFromTop(spacing);
+
+    // Bottom section: Custom Channel Names - flows below top groups, no overlap
+    customNamesGroup.setBounds(bounds);
+    auto cnInner = bounds;
+    cnInner.removeFromTop(20); // group title space
+    cnInner = cnInner.reduced(spacing, spacing / 2);
+    auto cnRow = cnInner.removeFromTop(28);
+    customNamesLabel.setBounds(cnRow.removeFromLeft(120));
+    customNamesHelpLabel.setBounds(cnRow.removeFromRight(120));
+    customNamesEditor.setBounds(cnRow);
 }
 
 //==============================================================================

@@ -118,6 +118,8 @@ public:
                       
     void drawTabbedButtonBarBackground(juce::TabbedButtonBar& bar, juce::Graphics& g) override;
 
+    int getTabButtonBestWidth(juce::TabBarButton& button, int tabDepth) override;
+
     // Progress bars
     void drawProgressBar(juce::Graphics& g, juce::ProgressBar& progressBar,
                         int width, int height, double progress,
@@ -140,8 +142,12 @@ public:
     bool areScrollbarButtonsVisible() override { return false; } // Modern flat scrollbars
     
     // Focus ring drawing
-    void drawFocusRing(juce::Graphics& g, const juce::Rectangle<int>& bounds, 
+    void drawFocusRing(juce::Graphics& g, const juce::Rectangle<int>& bounds,
                       int thickness = 2);
+
+    // Drop zone empty-state indicator (shared by splitter tabs)
+    static void drawDropZoneHint(juce::Graphics& g, const juce::Rectangle<int>& bounds,
+                                 const juce::String& hintText);
 
 private:
     //==============================================================================

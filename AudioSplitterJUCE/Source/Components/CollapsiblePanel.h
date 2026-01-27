@@ -79,6 +79,11 @@ public:
      */
     int getIdealHeight() const;
 
+    /**
+     * Set the content height explicitly (overrides auto-detection)
+     */
+    void setContentHeight(int height);
+
     //==============================================================================
     // Callbacks
 
@@ -92,7 +97,7 @@ private:
     //==============================================================================
     // Constants
     static constexpr int HEADER_HEIGHT = 32;
-    static constexpr int MIN_CONTENT_HEIGHT = 100;
+    static constexpr int MIN_CONTENT_HEIGHT = 200;
 
     //==============================================================================
     // UI Components
@@ -102,8 +107,8 @@ private:
     std::unique_ptr<juce::Drawable> collapsedIcon;
 
     //==============================================================================
-    // Content
-    juce::Component* contentComponent {nullptr};
+    // Content (owned by this panel)
+    std::unique_ptr<juce::Component> contentComponent;
     int contentHeight {MIN_CONTENT_HEIGHT};
 
     //==============================================================================

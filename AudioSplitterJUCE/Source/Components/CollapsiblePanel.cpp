@@ -6,7 +6,7 @@ CollapsiblePanel::CollapsiblePanel(const juce::String& title,
                                  ConfigManager* config,
                                  const juce::String& key,
                                  bool startCollapsed)
-    : contentComponent(content),
+    : contentComponent(content),  // takes ownership via unique_ptr
       configManager(config),
       stateKey(key),
       collapsed(startCollapsed),
@@ -31,7 +31,7 @@ CollapsiblePanel::CollapsiblePanel(const juce::String& title,
     // Add content component
     if (contentComponent)
     {
-        addAndMakeVisible(contentComponent);
+        addAndMakeVisible(contentComponent.get());
         contentHeight = contentComponent->getHeight();
         if (contentHeight < MIN_CONTENT_HEIGHT)
             contentHeight = MIN_CONTENT_HEIGHT;
@@ -132,12 +132,12 @@ void CollapsiblePanel::setCollapsed(bool shouldBeCollapsed, bool animate)
             // Animate content visibility
             if (collapsed)
             {
-                animator.fadeOut(contentComponent, 150);
+                animator.fadeOut(contentComponent.get(), 150);
             }
             else
             {
                 contentComponent->setVisible(true);
-                animator.fadeIn(contentComponent, 150);
+                animator.fadeIn(contentComponent.get(), 150);
             }
         }
         else
@@ -179,6 +179,12 @@ int CollapsiblePanel::getCollapsedHeight() const
 int CollapsiblePanel::getIdealHeight() const
 {
     return collapsed ? getCollapsedHeight() : getExpandedHeight();
+}
+
+//==============================================================================
+void CollapsiblePanel::setContentHeight(int height)
+{
+    contentHeight = juce::jmax(MIN_CONTENT_HEIGHT, height);
 }
 
 //==============================================================================
@@ -225,9 +231,7 @@ void CollapsiblePanel::saveState()
 {
     if (configManager && !stateKey.isEmpty())
     {
-        // Save collapsed state as boolean
-        // ConfigManager would need a setBool method, or we can use string
-        configManager->setLastInputDir(stateKey + "=" + (collapsed ? "1" : "0"));
+        configManager->setUIState(stateKey, collapsed ? "1" : "0");
     }
 }
 
@@ -236,12 +240,10 @@ void CollapsiblePanel::loadState()
 {
     if (configManager && !stateKey.isEmpty())
     {
-        // Load collapsed state from config
-        // This is a simplified implementation - ConfigManager would need proper bool support
-        auto savedState = configManager->getLastInputDir();
-        if (savedState.contains(stateKey))
+        auto savedState = configManager->getUIState(stateKey);
+        if (savedState.isNotEmpty())
         {
-            collapsed = savedState.contains(stateKey + "=1");
+            collapsed = (savedState == "1");
         }
     }
 }

@@ -63,6 +63,11 @@ public:
      */
     void setIndeterminate(bool indeterminate);
 
+    /**
+     * Show or hide cancel button in simple (non-batch) mode
+     */
+    void setSimpleModeCancelVisible(bool visible);
+
     //==============================================================================
     // Enhanced batch progress reporting (Phase 2.2)
 
@@ -86,6 +91,14 @@ public:
      */
     void updateProgressSafely(double progress, const juce::String& text);
 
+    //==============================================================================
+    // Cancellation
+
+    /**
+     * Callback invoked when user clicks Cancel during batch processing
+     */
+    std::function<void()> onCancelRequested;
+
 private:
     //==============================================================================
     // UI Components - mirrors Python progress UI structure
@@ -95,6 +108,9 @@ private:
 
     // Progress text label - mirrors progress_label (lines 1703-1707)
     juce::Label progressLabel;
+
+    // Cancel button (visible during batch processing)
+    juce::TextButton cancelButton;
 
     // Enhanced progress info labels (Phase 2.2)
     juce::Label filesLabel;           // "Processing: 47 of 200 (23%)"

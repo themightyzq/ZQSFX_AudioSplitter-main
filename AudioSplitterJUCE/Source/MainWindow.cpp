@@ -4,8 +4,7 @@
 MainWindow::MainWindow(const juce::String& name, ConfigManager* config)
     : DocumentWindow(
         name,
-        // Mirror Python dark theme colors (lines 1060-1062)
-        juce::Colour(0xff2c2c2c), // BACKGROUND_COLOR = "#2C2C2C"
+        juce::Colour(0xff1a1a1a), // Match ModernLookAndFeel::Colors::background
         DocumentWindow::allButtons
       ),
       configManager(config)
@@ -17,9 +16,8 @@ MainWindow::MainWindow(const juce::String& name, ConfigManager* config)
     // Set up window sizing FIRST - before creating content
     setupWindow();
     
-    // Create main component - mirrors Python notebook setup (lines 1202-1210)
-    mainComponent = std::make_unique<MainComponent>(configManager);
-    setContentOwned(mainComponent.get(), true);
+    // Create main component - DocumentWindow takes ownership
+    setContentOwned(new MainComponent(configManager), true);
     
     // Ensure size is correct after setting content
     setSize(defaultWidth, defaultHeight);
@@ -33,7 +31,7 @@ MainWindow::MainWindow(const juce::String& name, ConfigManager* config)
 //==============================================================================
 MainWindow::~MainWindow()
 {
-    // Clean up - automatic with std::unique_ptr
+    // Content component is owned by DocumentWindow via setContentOwned
 }
 
 //==============================================================================
@@ -64,10 +62,9 @@ void MainWindow::resized()
     // This method can be used for additional responsive behavior if needed
     
     // Optional: Adjust UI scaling based on window size
-    if (mainComponent)
+    if (auto* content = getContentComponent())
     {
-        // Trigger layout recalculation in MainComponent
-        mainComponent->resized();
+        content->resized();
     }
 }
 

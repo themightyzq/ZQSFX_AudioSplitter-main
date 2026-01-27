@@ -49,17 +49,14 @@ public:
 
 private:
     //==============================================================================
-    // Main component container - mirrors Python notebook setup
-    std::unique_ptr<MainComponent> mainComponent;
-    
     // Configuration manager reference
     ConfigManager* configManager;
     
-    // Window state - much larger default size for proper UI display
-    static constexpr int defaultWidth = 1200;   // Much larger for proper content visibility
-    static constexpr int defaultHeight = 900;   // Much larger for proper content visibility  
-    static constexpr int minWidth = 1000;       // Larger minimum to ensure all content is visible
-    static constexpr int minHeight = 750;       // Larger minimum to prevent any content cutoff
+    // Window dimensions - sized to fit all content with both panels expanded
+    static constexpr int defaultWidth = 1200;
+    static constexpr int defaultHeight = 1050;
+    static constexpr int minWidth = 1000;
+    static constexpr int minHeight = 850;
     
     //==============================================================================
     // Helper methods
