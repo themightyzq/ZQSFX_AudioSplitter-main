@@ -84,3 +84,16 @@ tmp/
 # Python artifacts (legacy)
 .eggs/
 myenv/
+
+# AI / tool configs (local only)
+.claude/
+.diversion/
+.dvignore
+
+# Internal dev docs (not public-facing)
+CLAUDE.md
+TODO.md
+IMPLEMENTATION_SUMMARY.md
+JUCE_PROJECT_DESIGN.md
+REPO_CLEANUP_REPORT.md
+python_version_archive/
