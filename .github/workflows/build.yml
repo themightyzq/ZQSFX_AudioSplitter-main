@@ -64,3 +64,24 @@ jobs:
         if: runner.os == 'Linux'
         run: find build/AudioSplitter_artefacts -type f -executable | head -5 && test -n "$(find build/AudioSplitter_artefacts -type f -executable)"
         working-directory: AudioSplitterJUCE
+
+      - name: Upload artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZQ-SFX-Audio-Splitter-macOS
+          path: AudioSplitterJUCE/build/AudioSplitter_artefacts/Release/ZQ SFX Audio Splitter.app
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZQ-SFX-Audio-Splitter-Windows
+          path: AudioSplitterJUCE/build/AudioSplitter_artefacts/Release/ZQ SFX Audio Splitter.exe
+
+      - name: Upload artifact (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZQ-SFX-Audio-Splitter-Linux
+          path: AudioSplitterJUCE/build/AudioSplitter_artefacts/
