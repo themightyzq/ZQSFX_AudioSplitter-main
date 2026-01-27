@@ -77,3 +77,10 @@ ffmpeg/
 temp/
 tmp/
 *.tmp
+
+# macOS
+.DS_Store
+
+# Python artifacts (legacy)
+.eggs/
+myenv/
