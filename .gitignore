@@ -97,3 +97,6 @@ IMPLEMENTATION_SUMMARY.md
 JUCE_PROJECT_DESIGN.md
 REPO_CLEANUP_REPORT.md
 python_version_archive/
+
+# Leaked API keys in JUCE example files
+**/google-services.json
