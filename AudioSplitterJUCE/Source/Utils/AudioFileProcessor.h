@@ -88,6 +88,18 @@ public:
      */
     bool isProcessing() const { return isThreadRunning(); }
 
+    /**
+     * Wait for processing to finish and return the result.
+     * For synchronous use (e.g., batch processing from a thread pool).
+     * @param timeoutMs Maximum wait time in milliseconds (-1 = infinite)
+     */
+    ProcessingResult waitForResult(int timeoutMs = -1);
+
+    /**
+     * Get a thread-safe copy of the current result.
+     */
+    ProcessingResult getResult() const;
+
     //==============================================================================
     // Thread interface
     void run() override;
@@ -100,7 +112,7 @@ private:
     CompletionCallback onCompletion;
 
     // Thread-safe result access
-    std::mutex resultMutex;
+    mutable std::mutex resultMutex;
     ProcessingResult result;
 
     // Progress tracking

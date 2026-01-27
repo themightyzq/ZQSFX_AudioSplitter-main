@@ -68,19 +68,41 @@ BatchSplitter::BatchSplitter(ConfigManager* config)
 }
 
 //==============================================================================
+BatchSplitter::~BatchSplitter()
+{
+    // Signal async callbacks that this object is gone
+    aliveFlag->store(false);
+
+    // Cancel all jobs and wait for pool to drain before members are destroyed
+    if (batchJobManager)
+        batchJobManager->cancelAllJobs();
+
+    if (threadPool)
+    {
+        threadPool->removeAllJobs(true, 5000);
+    }
+
+    // Now safe to destroy batchJobs, threadPool, batchJobManager via normal member destruction
+}
+
+//==============================================================================
 void BatchSplitter::paint(juce::Graphics& g)
 {
     g.fillAll(ModernLookAndFeel::Colors::background);
+
+    // Draw drop zone hint when no input directory is set
+    if (currentInputDir.isEmpty())
+        ModernLookAndFeel::drawDropZoneHint(g, getLocalBounds(), "Drop a folder of WAV files here or click Browse");
 }
 
 //==============================================================================
 void BatchSplitter::resized()
 {
     auto bounds = getLocalBounds();
-    const int margin = 10;
+    const int margin = ModernLookAndFeel::Spacing::md;    // 16px
     const int buttonWidth = 100;
-    const int rowHeight = 30;
-    const int spacing = 5;
+    const int rowHeight = 40;
+    const int spacing = ModernLookAndFeel::Spacing::sm;   // 8px
     
     bounds.reduce(margin, margin);
     
@@ -199,19 +221,50 @@ void BatchSplitter::startProcessing()
         return;
     }
 
+    // Confirm before processing large batches
+    static constexpr int kLargeBatchThreshold = 50;
+    if (validAudioFiles.size() > kLargeBatchThreshold)
+    {
+        auto confirm = juce::NativeMessageBox::showOkCancelBox(
+            juce::MessageBoxIconType::QuestionIcon,
+            "Confirm Batch Processing",
+            "Process " + juce::String(validAudioFiles.size()) + " files?\n\n"
+            "This may take a while. You can cancel at any time.",
+            nullptr, nullptr);
+
+        if (!confirm)
+            return;
+    }
+
+    // Prevent double-launch while already processing
+    if (isProcessing.load())
+    {
+        auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::InfoIcon,
+                                                             "Processing In Progress",
+                                                             "Batch processing is already in progress.");
+        juce::AlertWindow::showAsync(options, nullptr);
+        return;
+    }
+
     const int totalFiles = validAudioFiles.size();
     juce::Logger::writeToLog("Starting parallel batch processing of " + juce::String(totalFiles) + " files");
 
-    // Create BatchJobManager with callbacks
+    isProcessing.store(true);
+
+    // Create BatchJobManager with alive-flag-protected callbacks
+    auto weak = std::weak_ptr<std::atomic<bool>>(aliveFlag);
+
     batchJobManager = std::make_unique<BatchJobManager>(
         totalFiles,
-        [this](double progress, const juce::String& currentFile, int completed, int total)
+        [this, weak](double progress, const juce::String& currentFile, int completed, int total)
         {
-            onBatchProgress(progress, currentFile, completed, total);
+            if (auto alive = weak.lock(); alive && alive->load())
+                onBatchProgress(progress, currentFile, completed, total);
         },
-        [this](const BatchJobManager::BatchResult& result)
+        [this, weak](const BatchJobManager::BatchResult& result)
         {
-            onBatchComplete(result);
+            if (auto alive = weak.lock(); alive && alive->load())
+                onBatchComplete(result);
         }
     );
 
@@ -282,6 +335,24 @@ void BatchSplitter::startProcessing()
         threadPool->addJob(job, false);  // false = don't delete job when done (we manage it)
 
         juce::Logger::writeToLog("Submitted job " + juce::String(i) + ": " + file.getFileName());
+    }
+
+    // Wire up cancel button on progress panel
+    if (auto* mainComponent = findParentComponentOfClass<MainComponent>())
+    {
+        if (auto* progressPanel = mainComponent->getProgressPanel())
+        {
+            auto weakAlive = std::weak_ptr<std::atomic<bool>>(aliveFlag);
+            auto* mgr = batchJobManager.get();
+            progressPanel->onCancelRequested = [weakAlive, mgr]()
+            {
+                if (auto alive = weakAlive.lock(); alive && alive->load())
+                {
+                    if (mgr)
+                        mgr->cancelAllJobs();
+                }
+            };
+        }
     }
 
     juce::Logger::writeToLog("All " + juce::String(totalFiles) + " jobs submitted to thread pool");
@@ -492,8 +563,13 @@ void BatchSplitter::onBatchComplete(const BatchJobManager::BatchResult& result)
     juce::Logger::writeToLog("Batch processing complete: " + juce::String(result.successfulFiles) +
                             " succeeded, " + juce::String(result.failedFiles) + " failed");
 
-    // Clean up
+    // Wait for all pool jobs to finish before destroying them
+    if (threadPool)
+        threadPool->removeAllJobs(true, 5000);
+
+    // Now safe to clean up
     batchJobs.clear();
     threadPool.reset();
     batchJobManager.reset();
+    isProcessing.store(false);
 }

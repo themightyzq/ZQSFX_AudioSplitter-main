@@ -136,12 +136,24 @@ private:
     {
         std::atomic<double> progress {0.0};
         std::atomic<bool> isActive {false};
-        const juce::String filename;  // Const after construction - thread-safe
+        mutable std::mutex filenameMutex;
+        juce::String filename;
 
         JobProgress() = default;
-        explicit JobProgress(const juce::String& name) : filename(name) {}
+
+        void setFilename(const juce::String& name)
+        {
+            std::lock_guard<std::mutex> lock(filenameMutex);
+            filename = name;
+        }
+
+        juce::String getFilename() const
+        {
+            std::lock_guard<std::mutex> lock(filenameMutex);
+            return filename;
+        }
     };
-    std::vector<std::unique_ptr<JobProgress>> perJobProgress;  // Use pointers (atomics not copyable)
+    std::vector<std::unique_ptr<JobProgress>> perJobProgress;  // Pre-allocated, never replaced
 
     // Cancellation flag
     std::atomic<bool> cancellationRequested {false};

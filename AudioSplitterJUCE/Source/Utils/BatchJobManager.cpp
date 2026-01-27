@@ -29,10 +29,10 @@ void BatchJobManager::jobStarted(int jobIndex, const juce::String& filename)
 {
     if (jobIndex >= 0 && jobIndex < static_cast<int>(perJobProgress.size()))
     {
-        // Replace empty JobProgress with one containing the filename
-        perJobProgress[jobIndex] = std::make_unique<JobProgress>(filename);
-        perJobProgress[jobIndex]->isActive.store(true);
+        // Set fields on pre-allocated object instead of replacing the pointer
+        perJobProgress[jobIndex]->setFilename(filename);
         perJobProgress[jobIndex]->progress.store(0.0);
+        perJobProgress[jobIndex]->isActive.store(true);
 
         juce::Logger::writeToLog("Job " + juce::String(jobIndex) + " started: " + filename);
         updateProgressDisplay();
@@ -150,7 +150,7 @@ void BatchJobManager::updateProgressDisplay()
     {
         if (job->isActive.load())
         {
-            currentFile = job->filename;
+            currentFile = job->getFilename();
             break;  // Show first active file
         }
     }
@@ -213,12 +213,12 @@ BatchJobManager::BatchResult BatchJobManager::buildFinalResult() const
     result.failedFiles = failedJobCount.load();
     result.wasCancelled = cancellationRequested.load();
 
-    // Copy error messages and timing (mutex-protected)
+    // Copy error messages (mutex-protected) and use wall-clock time
     {
         std::lock_guard<std::mutex> lock(errorMutex);
         result.errorMessages = collectedErrors;
-        result.totalProcessingTimeSeconds = totalProcessingTime;
     }
+    result.totalProcessingTimeSeconds = (juce::Time::getCurrentTime() - batchStartTime).inSeconds();
 
     return result;
 }

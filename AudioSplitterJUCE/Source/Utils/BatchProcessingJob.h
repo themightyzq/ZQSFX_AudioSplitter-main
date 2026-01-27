@@ -54,6 +54,9 @@ private:
     // Timing
     juce::Time jobStartTime;
 
+    // Per-job progress tracking (not static -- avoids cross-thread data race)
+    double lastLoggedProgress {0.0};
+
     //==============================================================================
     // Callbacks for AudioFileProcessor
 

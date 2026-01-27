@@ -29,7 +29,7 @@ class BatchSplitter : public juce::Component,
 public:
     //==============================================================================
     explicit BatchSplitter(ConfigManager* configManager);
-    ~BatchSplitter() override = default;
+    ~BatchSplitter() override;
 
     //==============================================================================
     // Component interface
@@ -102,6 +102,10 @@ private:
     std::unique_ptr<juce::ThreadPool> threadPool;
     std::unique_ptr<BatchJobManager> batchJobManager;
     juce::OwnedArray<BatchProcessingJob> batchJobs;  // Keep jobs alive during processing
+
+    // Prevent dangling this in async callbacks
+    std::shared_ptr<std::atomic<bool>> aliveFlag = std::make_shared<std::atomic<bool>>(true);
+    std::atomic<bool> isProcessing {false};
 
     //==============================================================================
     // Helper methods

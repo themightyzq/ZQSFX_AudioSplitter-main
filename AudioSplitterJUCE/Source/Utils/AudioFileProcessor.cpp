@@ -106,51 +106,42 @@ void AudioFileProcessor::run()
         
         if (threadShouldExit() || shouldCancel.load())
         {
-            result.success = false;
-            result.errorMessage = "Processing cancelled";
-            completeProcessing();
+            setError("Processing cancelled");
             return;
         }
-        
+
         updateProgress(0.1, "Input file loaded successfully");
-        
+
         // Step 2: Setup output directory (20% of progress)
         updateProgress(0.1, "Setting up output directory...");
         if (!setupOutputDirectory())
-        {
-            return; // Error already set
-        }
-        
+            return;
+
         updateProgress(0.2, "Output directory ready");
-        
+
         // Step 3: Process channels (20% - 90% of progress)
         updateProgress(0.2, "Processing audio channels...");
         if (!processChannels())
-        {
-            return; // Error already set
-        }
-        
+            return;
+
         // Step 4: Complete successfully (100%)
         updateProgress(1.0, "Processing completed successfully");
-        
-        // Calculate processing time
+
         auto endTime = juce::Time::getMillisecondCounterHiRes();
-        result.processingTimeSeconds = (endTime - startTime) / 1000.0;
-        result.success = true;
-        
-        juce::Logger::writeToLog("AudioFileProcessor: Processing completed in " + 
-                                juce::String(result.processingTimeSeconds, 2) + " seconds");
+        setProcessingTime((endTime - startTime) / 1000.0);
+        setSuccess(true);
+
+        juce::Logger::writeToLog("AudioFileProcessor: Processing completed in " +
+                                juce::String((endTime - startTime) / 1000.0, 2) + " seconds");
     }
     catch (const std::exception& e)
     {
-        result.success = false;
-        result.errorMessage = "Processing error: " + juce::String(e.what());
-        juce::Logger::writeToLog("AudioFileProcessor: Exception caught - " + result.errorMessage);
+        setError("Processing error: " + juce::String(e.what()));
+        juce::Logger::writeToLog("AudioFileProcessor: Exception caught - " + juce::String(e.what()));
     }
     catch (...)
     {
-        result.success = false;
-        result.errorMessage = "Unknown processing error occurred";
+        setError("Unknown processing error occurred");
         juce::Logger::writeToLog("AudioFileProcessor: Unknown exception caught");
     }
     
@@ -164,34 +155,28 @@ bool AudioFileProcessor::loadInputFile()
     juce::File inputFile(currentOptions.inputFilePath);
     if (!inputFile.existsAsFile())
     {
-        result.success = false;
-        result.errorMessage = "Input file does not exist: " + currentOptions.inputFilePath;
-        completeProcessing();
+        setError("Input file does not exist: " + currentOptions.inputFilePath);
         return false;
     }
-    
+
     // Create audio format reader - mirrors Python audio file loading (lines 693-702)
     auto* reader = formatManager.createReaderFor(inputFile);
     if (reader == nullptr)
     {
-        result.success = false;
-        result.errorMessage = "Cannot read audio file (unsupported format): " + currentOptions.inputFilePath;
-        completeProcessing();
+        setError("Cannot read audio file (unsupported format): " + currentOptions.inputFilePath);
         return false;
     }
-    
+
     audioReader.reset(reader);
-    
+
     // Validate channel selection against actual file
     int actualChannels = (int)audioReader->numChannels;
     for (int channelIndex : currentOptions.selectedChannels)
     {
         if (channelIndex < 0 || channelIndex >= actualChannels)
         {
-            result.success = false;
-            result.errorMessage = "Invalid channel index " + juce::String(channelIndex + 1) + 
-                                 " (file has " + juce::String(actualChannels) + " channels)";
-            completeProcessing();
+            setError("Invalid channel index " + juce::String(channelIndex + 1) +
+                     " (file has " + juce::String(actualChannels) + " channels)");
             return false;
         }
     }
@@ -215,18 +200,14 @@ bool AudioFileProcessor::setupOutputDirectory()
         auto createResult = outputDir.createDirectory();
         if (!createResult.wasOk())
         {
-            result.success = false;
-            result.errorMessage = "Cannot create output directory: " + createResult.getErrorMessage();
-            completeProcessing();
+            setError("Cannot create output directory: " + createResult.getErrorMessage());
             return false;
         }
     }
-    
+
     if (!outputDir.isDirectory())
     {
-        result.success = false;
-        result.errorMessage = "Output path is not a directory: " + currentOptions.outputDirectory;
-        completeProcessing();
+        setError("Output path is not a directory: " + currentOptions.outputDirectory);
         return false;
     }
     
@@ -252,9 +233,9 @@ juce::StringArray AudioFileProcessor::generateOutputFilenames()
 
             // Get channel suffix from provided array or use index
             juce::String channelSuffix;
-            if (channelIndex < currentOptions.ucsChannelSuffixes.size())
+            if ((int)i < currentOptions.ucsChannelSuffixes.size())
             {
-                channelSuffix = currentOptions.ucsChannelSuffixes[channelIndex];
+                channelSuffix = currentOptions.ucsChannelSuffixes[(int)i];
             }
             else
             {
@@ -298,9 +279,9 @@ juce::StringArray AudioFileProcessor::generateOutputFilenames()
         juce::String channelName;
 
         // Use custom name if provided, otherwise default naming - mirrors Python lines 779-782
-        if (channelIndex < customNames.size() && customNames[channelIndex].isNotEmpty())
+        if ((int)i < customNames.size() && customNames[(int)i].isNotEmpty())
         {
-            channelName = customNames[channelIndex];
+            channelName = customNames[(int)i];
         }
         else
         {
@@ -324,19 +305,20 @@ bool AudioFileProcessor::processChannels()
     auto outputFilenames = generateOutputFilenames();
     double progressPerChannel = 0.7 / currentOptions.selectedChannels.size(); // 70% of total progress for channel processing
     
-    result.outputFiles.clear();
-    
+    {
+        std::lock_guard<std::mutex> lock(resultMutex);
+        result.outputFiles.clear();
+    }
+
     // Process each selected channel - mirrors Python channel extraction loop (lines 734-820)
     for (size_t i = 0; i < currentOptions.selectedChannels.size(); ++i)
     {
         if (threadShouldExit() || shouldCancel.load())
         {
-            result.success = false;
-            result.errorMessage = "Processing cancelled";
-            completeProcessing();
+            setError("Processing cancelled");
             return false;
         }
-        
+
         int channelIndex = currentOptions.selectedChannels[i];
         juce::String outputPath = outputFilenames[i];
         juce::String channelName = juce::File(outputPath).getFileNameWithoutExtension().fromLastOccurrenceOf("_", false, false);
@@ -348,8 +330,8 @@ bool AudioFileProcessor::processChannels()
         {
             return false; // Error already set
         }
-        
-        result.outputFiles.add(outputPath);
+
+        addOutputFile(outputPath);
         
         double channelProgressEnd = 0.2 + ((i + 1) * progressPerChannel);
         updateProgress(channelProgressEnd, "Completed " + channelName);
@@ -374,19 +356,15 @@ bool AudioFileProcessor::extractChannel(int channelIndex, const juce::String& ou
     auto outputStream = outputFile.createOutputStream();
     if (!outputStream)
     {
-        result.success = false;
-        result.errorMessage = "Cannot create output file: " + outputPath;
-        completeProcessing();
+        setError("Cannot create output file: " + outputPath);
         return false;
     }
-    
+
     // Get appropriate audio format (WAV by default)
     auto* format = formatManager.findFormatForFileExtension(outputFile.getFileExtension());
     if (!format)
     {
-        result.success = false;
-        result.errorMessage = "Unsupported output format: " + outputFile.getFileExtension();
-        completeProcessing();
+        setError("Unsupported output format: " + outputFile.getFileExtension());
         return false;
     }
     
@@ -407,8 +385,28 @@ bool AudioFileProcessor::extractChannel(int channelIndex, const juce::String& ou
         // - All other WAV metadata chunks
         outputMetadata = audioReader->metadataValues;
 
+        // Update channel count in metadata to reflect mono output
+        if (outputMetadata.containsKey("NumChannels"))
+            outputMetadata.set("NumChannels", "1");
+
+        // Update CodingHistory to reflect mono if present
+        juce::String codingHistory = outputMetadata.getValue("CodingHistory", "");
+        if (codingHistory.isNotEmpty())
+        {
+            // CodingHistory format: A=PCM,F=48000,W=24,M=stereo,T=...
+            // Replace M=stereo/M=surround etc. with M=mono
+            codingHistory = codingHistory.replace("M=stereo", "M=mono")
+                                        .replace("M=surround", "M=mono")
+                                        .replace("M=quad", "M=mono");
+            outputMetadata.set("CodingHistory", codingHistory);
+        }
+
+        // Update iXML TRACK_COUNT if present
+        if (outputMetadata.containsKey("IXML:TRACK_COUNT"))
+            outputMetadata.set("IXML:TRACK_COUNT", "1");
+
         // Log metadata preservation for verification
-        juce::Logger::writeToLog("  Preserving metadata: " + juce::String(outputMetadata.size()) + " fields");
+        juce::Logger::writeToLog("  Preserving metadata: " + juce::String(outputMetadata.size()) + " fields (updated for mono output)");
 
         // Log key metadata fields for the first channel only (avoid spam for multi-channel files)
         if (channelIndex == currentOptions.selectedChannels[0])
@@ -449,22 +447,26 @@ bool AudioFileProcessor::extractChannel(int channelIndex, const juce::String& ou
         }
     }
 
-    // Create writer with single channel output and preserved metadata
-    auto writer = format->createWriterFor(outputStream.release(),
-                                         outputSampleRate,
-                                         1, // Single channel output
-                                         outputBitDepth,
-                                         outputMetadata,  // Pass metadata to preserve BWF/iXML
-                                         0);
-    
+    // Create writer with single channel output and preserved metadata.
+    // createWriterFor takes ownership of the stream on success.
+    // On failure, we must not leak the stream.
+    auto* rawStream = outputStream.get();
+    auto* writer = format->createWriterFor(rawStream,
+                                           outputSampleRate,
+                                           1, // Single channel output
+                                           outputBitDepth,
+                                           outputMetadata,  // Pass metadata to preserve BWF/iXML
+                                           0);
+
     if (!writer)
     {
-        result.success = false;
-        result.errorMessage = "Cannot create audio writer for: " + outputPath;
-        completeProcessing();
+        // Stream was NOT consumed -- unique_ptr will clean it up
+        setError("Cannot create audio writer for: " + outputPath);
         return false;
     }
-    
+
+    // Writer took ownership of the stream, release unique_ptr to avoid double-free
+    outputStream.release();
     std::unique_ptr<juce::AudioFormatWriter> writerPtr(writer);
     
     // Check if we need to resample
@@ -482,19 +484,32 @@ bool AudioFileProcessor::extractChannel(int channelIndex, const juce::String& ou
     std::unique_ptr<juce::ResamplingAudioSource> resampler;
     std::unique_ptr<juce::AudioFormatReaderSource> readerSource;
     
+    // For resampling, create a fresh reader so position starts at 0
+    // (the shared audioReader may be at EOF from a previous channel extraction)
+    std::unique_ptr<juce::AudioFormatReader> channelReader;
+
     if (needsResampling)
     {
-        // Create audio source from reader
-        readerSource = std::make_unique<juce::AudioFormatReaderSource>(audioReader.get(), false);
-        
+        // Create independent reader for this channel to avoid shared position state
+        juce::File inputFile(currentOptions.inputFilePath);
+        channelReader.reset(formatManager.createReaderFor(inputFile));
+        if (!channelReader)
+        {
+            setError("Cannot re-open input file for resampling: " + currentOptions.inputFilePath);
+            return false;
+        }
+
+        // Create audio source from fresh reader
+        readerSource = std::make_unique<juce::AudioFormatReaderSource>(channelReader.get(), false);
+
         // Create resampler
         double resampleRatio = outputSampleRate / audioReader->sampleRate;
         resampler = std::make_unique<juce::ResamplingAudioSource>(readerSource.get(), false, (int)audioReader->numChannels);
         resampler->setResamplingRatio(resampleRatio);
-        
+
         // Prepare the resampler
         resampler->prepareToPlay(bufferSize, audioReader->sampleRate);
-        
+
         // Adjust total samples for output sample rate
         totalSamples = static_cast<juce::int64>(totalSamples * resampleRatio);
     }
@@ -503,12 +518,10 @@ bool AudioFileProcessor::extractChannel(int channelIndex, const juce::String& ou
     {
         if (threadShouldExit() || shouldCancel.load())
         {
-            result.success = false;
-            result.errorMessage = "Processing cancelled";
-            completeProcessing();
+            setError("Processing cancelled");
             return false;
         }
-        
+
         // Calculate samples to process this iteration
         int samplesToProcess = juce::jmin(bufferSize, (int)(totalSamples - samplesProcessed));
         
@@ -534,7 +547,6 @@ bool AudioFileProcessor::extractChannel(int channelIndex, const juce::String& ou
         writerPtr->writeFromAudioSampleBuffer(writeBuffer, 0, samplesToProcess);
         
         samplesProcessed += samplesToProcess;
-        result.totalSamplesProcessed += samplesToProcess;
         
         // Update progress occasionally (every 100K samples to avoid excessive updates)
         if (samplesProcessed % 100000 == 0 || samplesProcessed >= totalSamples)
@@ -551,7 +563,9 @@ bool AudioFileProcessor::extractChannel(int channelIndex, const juce::String& ou
     
     // Ensure all data is written
     writerPtr->flush();
-    
+
+    incrementSamplesProcessed(samplesProcessed);
+
     return true;
 }
 
@@ -626,4 +640,18 @@ void AudioFileProcessor::setProcessingTime(double seconds)
 {
     std::lock_guard<std::mutex> lock(resultMutex);
     result.processingTimeSeconds = seconds;
+}
+
+//==============================================================================
+AudioFileProcessor::ProcessingResult AudioFileProcessor::waitForResult(int timeoutMs)
+{
+    waitForThreadToExit(timeoutMs);
+    std::lock_guard<std::mutex> lock(resultMutex);
+    return result;
+}
+
+AudioFileProcessor::ProcessingResult AudioFileProcessor::getResult() const
+{
+    std::lock_guard<std::mutex> lock(resultMutex);
+    return result;
 }

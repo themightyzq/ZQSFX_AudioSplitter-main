@@ -45,91 +45,35 @@ juce::ThreadPoolJob::JobStatus BatchProcessingJob::runJob()
     juce::Logger::writeToLog("BatchProcessingJob " + juce::String(jobIndex) +
                             " started processing: " + filename);
 
-    // Set up callbacks for progress and completion
-    bool jobCompleted = false;
-    AudioFileProcessor::ProcessingResult jobResult;
-
+    // Set up progress callback (no completion callback -- we wait synchronously)
     auto progressCallback = [this](double progress, const juce::String& message)
     {
-        // Check for cancellation
         if (jobManager && jobManager->isCancellationRequested())
         {
             if (processor)
-            {
                 processor->cancelProcessing();
-            }
             return;
         }
-
         onProgress(progress, message);
     };
 
-    auto completionCallback = [&jobCompleted, &jobResult](const AudioFileProcessor::ProcessingResult& result)
+    // Start processing thread, then block until it finishes
+    processor->startProcessing(processingOptions, progressCallback, nullptr);
+
+    // Poll until the processor thread exits, checking for cancellation
+    while (processor->isProcessing())
     {
-        jobResult = result;
-        jobCompleted = true;
-    };
-
-    // Start processing (this blocks until completion)
-    processor->startProcessing(processingOptions, progressCallback, completionCallback);
-
-    // Wait for completion callback to be invoked
-    // AudioFileProcessor runs on its own thread and will call completionCallback
-    // We need to wait for it to finish
-    const int maxWaitTime = 60000; // 60 seconds max per file
-    const int checkInterval = 100;  // Check every 100ms
-    int waitedTime = 0;
-
-    while (!jobCompleted && waitedTime < maxWaitTime)
-    {
-        // Check for cancellation
-        if (jobManager && jobManager->isCancellationRequested())
+        if ((jobManager && jobManager->isCancellationRequested()) || shouldExit())
         {
             juce::Logger::writeToLog("BatchProcessingJob " + juce::String(jobIndex) + " cancelled");
-
-            if (processor)
-            {
-                processor->cancelProcessing();
-            }
-
-            return jobHasFinished;  // Return finished (cancelled is a type of finish)
-        }
-
-        if (shouldExit())
-        {
-            juce::Logger::writeToLog("BatchProcessingJob " + juce::String(jobIndex) + " should exit");
-
-            if (processor)
-            {
-                processor->cancelProcessing();
-            }
-
+            processor->cancelProcessing();
             return jobHasFinished;
         }
-
-        juce::Thread::sleep(checkInterval);
-        waitedTime += checkInterval;
+        juce::Thread::sleep(50);
     }
 
-    // Check if we timed out
-    if (!jobCompleted)
-    {
-        juce::Logger::writeToLog("BatchProcessingJob " + juce::String(jobIndex) + " TIMEOUT after " +
-                                juce::String(maxWaitTime / 1000) + " seconds");
-
-        if (processor)
-        {
-            processor->cancelProcessing();
-        }
-
-        // Report timeout as failure
-        if (jobManager)
-        {
-            jobManager->jobFailed(jobIndex, "Processing timeout (>" + juce::String(maxWaitTime / 1000) + "s)");
-        }
-
-        return jobHasFinished;
-    }
+    // Thread is done -- read result directly (no message-thread dependency)
+    auto jobResult = processor->getResult();
 
     // Calculate processing time
     const double processingTime = (juce::Time::getCurrentTime() - jobStartTime).inSeconds();
@@ -165,7 +109,6 @@ void BatchProcessingJob::onProgress(double progress, const juce::String& message
     }
 
     // Log detailed progress occasionally (every 10%)
-    static double lastLoggedProgress = 0.0;
     if (progress - lastLoggedProgress >= 0.1 || progress >= 0.99)
     {
         juce::Logger::writeToLog("Job " + juce::String(jobIndex) + " progress: " +
