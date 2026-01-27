@@ -6,15 +6,15 @@ __pycache__/
 *.dylib
 *.pyd
 
-# C extensions
-build/
+# C extensions / CMake build output
+/build/
+/AudioSplitterJUCE/build/
 
 # Distribution / packaging
 .Python
 env/
 venv/
 ENV/
-build/
 dist/
 *.egg-info/
 .installed.cfg
