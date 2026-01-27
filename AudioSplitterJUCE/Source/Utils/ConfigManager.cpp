@@ -70,7 +70,18 @@ void ConfigManager::loadConfig()
                 {
                     defaultCustomNames = jsonObject->getProperty("default_custom_names").toString();
                 }
-                
+
+                // Load UI state
+                if (jsonObject->hasProperty("ui_state"))
+                {
+                    auto uiStateVar = jsonObject->getProperty("ui_state");
+                    if (auto* uiObj = uiStateVar.getDynamicObject())
+                    {
+                        for (const auto& prop : uiObj->getProperties())
+                            uiState[prop.name.toString()] = prop.value.toString();
+                    }
+                }
+
                 juce::Logger::writeToLog("Loaded config: " + configText);
             }
         }
@@ -115,7 +126,16 @@ void ConfigManager::saveConfig()
         configObject->setProperty("default_sample_rate", defaultSampleRate);
         configObject->setProperty("default_bit_depth", defaultBitDepth);
         configObject->setProperty("default_custom_names", defaultCustomNames);
-        
+
+        // Save UI state
+        if (!uiState.empty())
+        {
+            juce::DynamicObject::Ptr uiObj = new juce::DynamicObject();
+            for (const auto& [key, value] : uiState)
+                uiObj->setProperty(key, value);
+            configObject->setProperty("ui_state", juce::var(uiObj.get()));
+        }
+
         // Convert to JSON string
         juce::var configVar(configObject.get());
         juce::String configText = juce::JSON::toString(configVar);
@@ -170,6 +190,18 @@ void ConfigManager::setDefaultBitDepth(const juce::String& depth)
 void ConfigManager::setDefaultCustomNames(const juce::String& names)
 {
     defaultCustomNames = names;
+}
+
+//==============================================================================
+juce::String ConfigManager::getUIState(const juce::String& key, const juce::String& defaultValue) const
+{
+    auto it = uiState.find(key);
+    return (it != uiState.end()) ? it->second : defaultValue;
+}
+
+void ConfigManager::setUIState(const juce::String& key, const juce::String& value)
+{
+    uiState[key] = value;
 }
 
 //==============================================================================

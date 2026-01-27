@@ -194,8 +194,8 @@ juce::String UCSManager::sanitizeDescription(const juce::String& description) co
 
     juce::String cleaned = description.trim();
 
-    // Remove illegal filename characters
-    cleaned = cleaned.removeCharacters("\\/:*?\"<>|");
+    // Remove illegal filename characters and characters problematic for metadata tools
+    cleaned = cleaned.removeCharacters("\\/:*?\"<>|&%#$@!");
 
     // Replace spaces with underscores or remove them
     cleaned = cleaned.replace(" ", "_");

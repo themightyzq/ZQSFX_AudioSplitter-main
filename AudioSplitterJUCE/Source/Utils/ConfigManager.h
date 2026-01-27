@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <map>
 
 //==============================================================================
 /**
@@ -103,6 +104,12 @@ public:
      */
     void setDefaultCustomNames(const juce::String& names);
 
+    //==============================================================================
+    // Generic key-value store for UI state (panel collapse, etc.)
+
+    juce::String getUIState(const juce::String& key, const juce::String& defaultValue = {}) const;
+    void setUIState(const juce::String& key, const juce::String& value);
+
 private:
     //==============================================================================
     // Configuration file management
@@ -130,6 +137,9 @@ private:
     juce::String defaultBitDepth {"16 bit"};     // mirrors line 1221  
     juce::String defaultCustomNames {"L,R,C,lfe,Ls,Rs,Lss,Rss"}; // mirrors line 1213
     
+    // Generic UI state storage
+    std::map<juce::String, juce::String> uiState;
+
     // Internal state
     bool configLoaded {false};
     

@@ -57,11 +57,11 @@ UCSNamingPanel::UCSNamingPanel(UCSManager* manager, ConfigManager* config)
 
     // Preview
     previewLabel.setColour(juce::Label::textColourId, ModernLookAndFeel::Colors::textPrimary);
-    previewLabel.setFont(juce::Font(juce::FontOptions(12.0f).withStyle("Bold")));
+    previewLabel.setFont(juce::Font(juce::FontOptions(ModernLookAndFeel::Typography::getCaptionSize()).withStyle("Bold")));
     addAndMakeVisible(previewLabel);
 
     previewText.setColour(juce::Label::textColourId, ModernLookAndFeel::Colors::primary);
-    previewText.setFont(juce::Font(juce::FontOptions(juce::Font::getDefaultMonospacedFontName(), 12.0f, juce::Font::plain)));
+    previewText.setFont(juce::Font(juce::FontOptions(juce::Font::getDefaultMonospacedFontName(), ModernLookAndFeel::Typography::getCaptionSize(), juce::Font::plain)));
     addAndMakeVisible(previewText);
 
     // Populate UI

@@ -45,7 +45,9 @@ AudioAnalyzer::AudioFileInfo AudioAnalyzer::analyzeFile(const juce::String& file
         info.sampleRate = reader->sampleRate;
         info.bitDepth = (int)reader->bitsPerSample;
         info.lengthInSamples = reader->lengthInSamples;
-        info.lengthInSeconds = reader->lengthInSamples / reader->sampleRate;
+        info.lengthInSeconds = (reader->sampleRate > 0.0)
+            ? reader->lengthInSamples / reader->sampleRate
+            : 0.0;
         info.formatName = reader->getFormatName();
         
         juce::Logger::writeToLog("File analyzed successfully: " + filePath);

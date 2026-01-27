@@ -98,5 +98,8 @@ JUCE_PROJECT_DESIGN.md
 REPO_CLEANUP_REPORT.md
 python_version_archive/
 
+# QA artifacts (local testing only)
+qa_artifacts/
+
 # Leaked API keys in JUCE example files
 **/google-services.json
