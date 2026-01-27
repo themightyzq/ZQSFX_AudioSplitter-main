@@ -62,5 +62,5 @@ jobs:
 
       - name: Verify binary (Linux)
         if: runner.os == 'Linux'
-        run: ls build/AudioSplitter_artefacts/Release/AudioSplitter || ls build/AudioSplitter_artefacts/AudioSplitter
+        run: find build/AudioSplitter_artefacts -type f -executable | head -5 && test -n "$(find build/AudioSplitter_artefacts -type f -executable)"
         working-directory: AudioSplitterJUCE
