@@ -51,7 +51,7 @@ jobs:
 
       # Builds the app AND the test targets (both are part of the default build).
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --parallel 2
         working-directory: AudioSplitterJUCE
 
       # The real gate: metadata-preservation + split-pipeline tests must pass.
