@@ -1,0 +1,100 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS
+            cmake_args: "-DZQ_MAC_UNIVERSAL=ON"
+          - os: windows-latest
+            name: Windows
+            cmake_args: ""
+          - os: ubuntu-22.04
+            name: Linux
+            cmake_args: ""
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libjack-jackd2-dev \
+            libfreetype-dev \
+            libfontconfig1-dev \
+            libx11-dev \
+            libxcomposite-dev \
+            libxcursor-dev \
+            libxext-dev \
+            libxinerama-dev \
+            libxrandr-dev \
+            libxrender-dev
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }}
+        working-directory: AudioSplitterJUCE
+
+      # Builds the app AND the test targets (both are part of the default build).
+      - name: Build
+        run: cmake --build build --config Release --parallel
+        working-directory: AudioSplitterJUCE
+
+      # The real gate: metadata-preservation + split-pipeline tests must pass.
+      - name: Run tests
+        run: ctest --test-dir build --build-config Release --output-on-failure
+        working-directory: AudioSplitterJUCE
+
+      - name: Verify Universal Binary (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          BIN="build/AudioSplitter_artefacts/Release/ZQ SFX Audio Splitter.app/Contents/MacOS/ZQ SFX Audio Splitter"
+          echo "Architectures: $(lipo -archs "$BIN")"
+          lipo -archs "$BIN" | grep -q arm64
+          lipo -archs "$BIN" | grep -q x86_64
+        working-directory: AudioSplitterJUCE
+
+      - name: Verify binary (Windows)
+        if: runner.os == 'Windows'
+        run: dir "build\AudioSplitter_artefacts\Release\ZQ SFX Audio Splitter.exe"
+        working-directory: AudioSplitterJUCE
+
+      - name: Verify binary (Linux)
+        if: runner.os == 'Linux'
+        run: find build/AudioSplitter_artefacts -type f -executable | head -5 && test -n "$(find build/AudioSplitter_artefacts -type f -executable)"
+        working-directory: AudioSplitterJUCE
+
+      - name: Upload artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZQ-SFX-Audio-Splitter-macOS
+          path: AudioSplitterJUCE/build/AudioSplitter_artefacts/Release/ZQ SFX Audio Splitter.app
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZQ-SFX-Audio-Splitter-Windows
+          path: AudioSplitterJUCE/build/AudioSplitter_artefacts/Release/ZQ SFX Audio Splitter.exe
+
+      - name: Upload artifact (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZQ-SFX-Audio-Splitter-Linux
+          path: AudioSplitterJUCE/build/AudioSplitter_artefacts/

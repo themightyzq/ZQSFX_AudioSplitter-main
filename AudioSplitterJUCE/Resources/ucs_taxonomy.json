@@ -1,0 +1,287 @@
+{
+  "version": "1.0",
+  "description": "Universal Category System (UCS) Taxonomy for Professional Sound Effects",
+  "source": "https://universalcategorysystem.com",
+  "categories": {
+    "AMBNat": {
+      "name": "Natural Ambience",
+      "description": "Natural environmental sounds and atmospheres",
+      "subcategories": [
+        "Forest",
+        "Ocean",
+        "River",
+        "Mountain",
+        "Desert",
+        "Rain",
+        "Wind",
+        "Thunder",
+        "Birds",
+        "Insects",
+        "Animals",
+        "Weather",
+        "Seasons",
+        "Day",
+        "Night",
+        "Dawn",
+        "Dusk"
+      ]
+    },
+    "AMBUrb": {
+      "name": "Urban Ambience",
+      "description": "City and urban environmental sounds",
+      "subcategories": [
+        "City",
+        "Street",
+        "Traffic",
+        "Park",
+        "Square",
+        "Market",
+        "Mall",
+        "Station",
+        "Airport",
+        "Harbor",
+        "Construction",
+        "Industrial",
+        "Residential",
+        "Downtown",
+        "Suburban"
+      ]
+    },
+    "AMBInt": {
+      "name": "Interior Ambience",
+      "description": "Indoor environmental sounds and room tones",
+      "subcategories": [
+        "Office",
+        "Home",
+        "School",
+        "Hospital",
+        "Restaurant",
+        "Bar",
+        "Cafe",
+        "Store",
+        "Factory",
+        "Warehouse",
+        "Garage",
+        "Studio",
+        "Theater",
+        "Church",
+        "Museum"
+      ]
+    },
+    "FOLExt": {
+      "name": "Foley External",
+      "description": "Outdoor foley and movement sounds",
+      "subcategories": [
+        "Footsteps",
+        "Running",
+        "Walking",
+        "Clothing",
+        "Gear",
+        "Backpack",
+        "Equipment",
+        "Props",
+        "Handling",
+        "Movement",
+        "Actions"
+      ]
+    },
+    "FOLInt": {
+      "name": "Foley Internal",
+      "description": "Indoor foley and movement sounds",
+      "subcategories": [
+        "Footsteps",
+        "Movement",
+        "Clothing",
+        "Handling",
+        "Props",
+        "Furniture",
+        "Doors",
+        "Windows",
+        "Drawers",
+        "Actions",
+        "Body"
+      ]
+    },
+    "DSnExt": {
+      "name": "Design External",
+      "description": "Designed outdoor sound effects",
+      "subcategories": [
+        "Impacts",
+        "Explosions",
+        "Weapons",
+        "Vehicles",
+        "Machines",
+        "Energy",
+        "Magic",
+        "SciFi",
+        "Fantasy",
+        "Horror",
+        "Action",
+        "Swoosh",
+        "Transition"
+      ]
+    },
+    "DSnInt": {
+      "name": "Design Internal",
+      "description": "Designed indoor sound effects",
+      "subcategories": [
+        "Impacts",
+        "Weapons",
+        "Devices",
+        "Machines",
+        "Electronics",
+        "Energy",
+        "Magic",
+        "SciFi",
+        "Horror",
+        "UI",
+        "Interface",
+        "Beeps",
+        "Alerts"
+      ]
+    },
+    "HRDExt": {
+      "name": "Hard Effects External",
+      "description": "Realistic outdoor hard effects",
+      "subcategories": [
+        "Vehicles",
+        "Cars",
+        "Trucks",
+        "Motorcycles",
+        "Aircraft",
+        "Helicopters",
+        "Boats",
+        "Trains",
+        "Construction",
+        "Tools",
+        "Machines",
+        "Equipment",
+        "Doors",
+        "Gates"
+      ]
+    },
+    "HRDInt": {
+      "name": "Hard Effects Internal",
+      "description": "Realistic indoor hard effects",
+      "subcategories": [
+        "Appliances",
+        "Electronics",
+        "Computers",
+        "Phones",
+        "Tools",
+        "Equipment",
+        "Doors",
+        "Windows",
+        "Switches",
+        "Mechanisms",
+        "Clocks",
+        "HVAC",
+        "Plumbing"
+      ]
+    },
+    "VOCHum": {
+      "name": "Human Voice",
+      "description": "Human vocal sounds and speech",
+      "subcategories": [
+        "Male",
+        "Female",
+        "Child",
+        "Baby",
+        "Crowd",
+        "Group",
+        "Walla",
+        "Efforts",
+        "Screams",
+        "Laughs",
+        "Cries",
+        "Coughs",
+        "Breaths",
+        "Whispers"
+      ]
+    },
+    "VOCAni": {
+      "name": "Animal Voice",
+      "description": "Animal and creature vocalizations",
+      "subcategories": [
+        "Dogs",
+        "Cats",
+        "Birds",
+        "Horses",
+        "Cattle",
+        "Wildlife",
+        "Insects",
+        "Reptiles",
+        "Marine",
+        "Domestic",
+        "Farm",
+        "Zoo",
+        "Exotic"
+      ]
+    },
+    "MUSInst": {
+      "name": "Musical Instruments",
+      "description": "Individual instrument sounds",
+      "subcategories": [
+        "Piano",
+        "Guitar",
+        "Bass",
+        "Drums",
+        "Percussion",
+        "Strings",
+        "Brass",
+        "Woodwinds",
+        "Synthesizer",
+        "Electronic",
+        "Ethnic",
+        "Orchestral"
+      ]
+    },
+    "MUSBed": {
+      "name": "Music Beds",
+      "description": "Background music and musical compositions",
+      "subcategories": [
+        "Cinematic",
+        "Ambient",
+        "Electronic",
+        "Rock",
+        "Jazz",
+        "Classical",
+        "World",
+        "Ethnic",
+        "Corporate",
+        "Tension",
+        "Action",
+        "Drama"
+      ]
+    }
+  },
+  "channelSuffixes": {
+    "mono": ["M"],
+    "stereo": ["L", "R"],
+    "lcr": ["L", "C", "R"],
+    "quad": ["L", "R", "Ls", "Rs"],
+    "5.0": ["L", "R", "C", "Ls", "Rs"],
+    "5.1": ["L", "R", "C", "Lfe", "Ls", "Rs"],
+    "7.0": ["L", "R", "C", "Ls", "Rs", "Lss", "Rss"],
+    "7.1": ["L", "R", "C", "Lfe", "Ls", "Rs", "Lss", "Rss"]
+  },
+  "namingRules": {
+    "format": "Category_Subcategory_Description_Channel.wav",
+    "categoryMaxLength": 6,
+    "subcategoryMaxLength": 20,
+    "descriptionMaxLength": 50,
+    "descriptionRules": [
+      "Use CamelCase or underscores",
+      "Avoid spaces (use underscores or CamelCase)",
+      "Keep concise but descriptive",
+      "Include key characteristics (material, intensity, etc.)"
+    ],
+    "examples": [
+      "AMBNat_Forest_MorningBirds_L.wav",
+      "DSnExt_Urban_CarPass_M.wav",
+      "FOLExt_Footsteps_Gravel_R.wav",
+      "HRDInt_Appliances_Fridge_Hum_L.wav",
+      "AMBUrb_Traffic_HighwayConstant_M.wav"
+    ]
+  }
+}

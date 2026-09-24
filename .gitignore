@@ -1,0 +1,120 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+*.dll
+*.dylib
+*.pyd
+
+# C extensions / CMake build output
+/build/
+AudioSplitterJUCE/build*/
+_deps/
+
+# Vendored JUCE copy (local convenience only; the real dependency is FetchContent-pinned
+# in AudioSplitterJUCE/CMakeLists.txt). Stays on disk, untracked -- never push it.
+AudioSplitterJUCE/JUCE/
+
+# Distribution / packaging
+.Python
+env/
+venv/
+ENV/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-wheel-metadata/
+
+# PyInstaller
+#  Usually contains the Python interpreter, too
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook files
+*.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# VSCode and IDEs
+.vscode/
+.idea/
+*.sublime-workspace
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Logs and databases
+*.log
+*.sql
+*.sqlite3
+
+# FFmpeg binaries
+ffmpeg/
+
+# Custom temporary files
+temp/
+tmp/
+*.tmp
+
+# macOS
+.DS_Store
+
+# Python artifacts (legacy)
+.eggs/
+myenv/
+
+# =============================================================================
+# Git holds ONLY what a user needs to build/get/use the product (source, build
+# files, README). All AI-agent and internal-process artifacts live in Diversion,
+# never in git. Keep these lists in sync if new agent/internal files appear.
+# =============================================================================
+
+# AI / agent configs and memory (Diversion only)
+.claude/
+.diversion/
+.dvignore
+.remember/
+
+# Internal dev / agent / process docs (not user-facing; Diversion only)
+CLAUDE.md
+STATUS.md
+RECLAMATION_BACKLOG.md
+TODO.md
+IMPLEMENTATION_SUMMARY.md
+JUCE_PROJECT_DESIGN.md
+REPO_CLEANUP_REPORT.md
+docs/
+python_version_archive/
+
+# QA artifacts (local testing only)
+qa_artifacts/
+
+# Leaked API keys in JUCE example files
+**/google-services.json
