@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.22)
 
+# Minimum macOS 11.0, set before project(). Without it the binary inherits the build
+# machine's OS as its floor (a CI runner produced minos 26.0, unloadable on older Macs).
+# 11.0 is the lowest a universal (arm64 + x86_64) binary can target.
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+endif()
+
 project(AudioSplitter VERSION 1.0.0)
 
 # Set C++ standard

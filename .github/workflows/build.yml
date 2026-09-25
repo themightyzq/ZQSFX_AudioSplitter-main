@@ -66,6 +66,8 @@ jobs:
           echo "Architectures: $(lipo -archs "$BIN")"
           lipo -archs "$BIN" | grep -q arm64
           lipo -archs "$BIN" | grep -q x86_64
+          echo "Minimum macOS: $(otool -l "$BIN" | awk '/minos/{print $2}' | sort -u | tr '\n' ' ')"
+          test "$(otool -l "$BIN" | awk '/minos/{print $2}' | sort -u)" = "11.0"
         working-directory: AudioSplitterJUCE
 
       - name: Verify binary (Windows)
