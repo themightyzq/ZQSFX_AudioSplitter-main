@@ -141,12 +141,12 @@ open "build/AudioSplitter_artefacts/Release/ZQ SFX Audio Splitter.app"
 
 After building and launching, verify:
 
-1. ✅ Application window opens with dark theme (#2C2C2C background)
-2. ✅ Two tabs visible: "Split Single File" and "Batch Split"  
-3. ✅ File/directory browsing buttons work
-4. ✅ Split button is disabled initially (correct state)
-5. ✅ Configuration loads default settings
-6. ✅ Drag-and-drop areas are responsive
+- [ ] Application window opens with dark theme (#2C2C2C background)
+- [ ] Two tabs visible: "Split Single File" and "Batch Split"
+- [ ] File/directory browsing buttons work
+- [ ] Split button is disabled initially (correct state)
+- [ ] Configuration loads default settings
+- [ ] Drag-and-drop areas are responsive
 
 ## Development Notes
 
