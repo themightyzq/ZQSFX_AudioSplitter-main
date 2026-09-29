@@ -62,6 +62,7 @@ target_compile_definitions(SplitPipelineTest PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_STANDALONE_APPLICATION=1
+    JUCE_MODAL_LOOPS_PERMITTED=1  # test pumps the message loop to receive completion callbacks
 )
 
 juce_generate_juce_header(SplitPipelineTest)

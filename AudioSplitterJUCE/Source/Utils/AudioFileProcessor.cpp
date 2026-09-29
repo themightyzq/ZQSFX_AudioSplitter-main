@@ -47,27 +47,36 @@ void AudioFileProcessor::startProcessing(const ProcessingOptions& options,
     // Validate input parameters - mirrors Python validation (lines 673-685)
     if (options.inputFilePath.isEmpty())
     {
-        std::lock_guard<std::mutex> lock(resultMutex);
-        result.success = false;
-        result.errorMessage = "Input file path is empty";
+        {
+            std::lock_guard<std::mutex> lock(resultMutex);
+            result.success = false;
+            result.errorMessage = "Input file path is empty";
+        }
+        // Outside the lock: completeProcessing() takes resultMutex itself.
         completeProcessing();
         return;
     }
 
     if (options.outputDirectory.isEmpty())
     {
-        std::lock_guard<std::mutex> lock(resultMutex);
-        result.success = false;
-        result.errorMessage = "Output directory is empty";
+        {
+            std::lock_guard<std::mutex> lock(resultMutex);
+            result.success = false;
+            result.errorMessage = "Output directory is empty";
+        }
+        // Outside the lock: completeProcessing() takes resultMutex itself.
         completeProcessing();
         return;
     }
 
     if (options.selectedChannels.empty())
     {
-        std::lock_guard<std::mutex> lock(resultMutex);
-        result.success = false;
-        result.errorMessage = "No channels selected for extraction";
+        {
+            std::lock_guard<std::mutex> lock(resultMutex);
+            result.success = false;
+            result.errorMessage = "No channels selected for extraction";
+        }
+        // Outside the lock: completeProcessing() takes resultMutex itself.
         completeProcessing();
         return;
     }
@@ -98,42 +107,46 @@ void AudioFileProcessor::run()
     
     try
     {
-        // Step 1: Load and validate input file (10% of progress)
-        updateProgress(0.0, "Loading input file...");
-        if (!loadInputFile())
+        // Single-pass pipeline: every failure path breaks out of this block (the error is
+        // already recorded by setError) and so reaches the one completeProcessing() call
+        // at the end of run(). Never `return` from inside it.
+        do
         {
-            return; // Error already set
-        }
-        
-        if (threadShouldExit() || shouldCancel.load())
-        {
-            setError("Processing cancelled");
-            return;
-        }
+            // Step 1: Load and validate input file (10% of progress)
+            updateProgress(0.0, "Loading input file...");
+            if (!loadInputFile())
+                break; // Error already set
 
-        updateProgress(0.1, "Input file loaded successfully");
+            if (threadShouldExit() || shouldCancel.load())
+            {
+                setError("Processing cancelled");
+                break;
+            }
 
-        // Step 2: Setup output directory (20% of progress)
-        updateProgress(0.1, "Setting up output directory...");
-        if (!setupOutputDirectory())
-            return;
+            updateProgress(0.1, "Input file loaded successfully");
 
-        updateProgress(0.2, "Output directory ready");
+            // Step 2: Setup output directory (20% of progress)
+            updateProgress(0.1, "Setting up output directory...");
+            if (!setupOutputDirectory())
+                break;
 
-        // Step 3: Process channels (20% - 90% of progress)
-        updateProgress(0.2, "Processing audio channels...");
-        if (!processChannels())
-            return;
+            updateProgress(0.2, "Output directory ready");
 
-        // Step 4: Complete successfully (100%)
-        updateProgress(1.0, "Processing completed successfully");
+            // Step 3: Process channels (20% - 90% of progress)
+            updateProgress(0.2, "Processing audio channels...");
+            if (!processChannels())
+                break;
 
-        auto endTime = juce::Time::getMillisecondCounterHiRes();
-        setProcessingTime((endTime - startTime) / 1000.0);
-        setSuccess(true);
+            // Step 4: Complete successfully (100%)
+            updateProgress(1.0, "Processing completed successfully");
 
-        juce::Logger::writeToLog("AudioFileProcessor: Processing completed in " +
-                                juce::String((endTime - startTime) / 1000.0, 2) + " seconds");
+            auto endTime = juce::Time::getMillisecondCounterHiRes();
+            setProcessingTime((endTime - startTime) / 1000.0);
+            setSuccess(true);
+
+            juce::Logger::writeToLog("AudioFileProcessor: Processing completed in " +
+                                    juce::String((endTime - startTime) / 1000.0, 2) + " seconds");
+        } while (false);
     }
     catch (const std::exception& e)
     {

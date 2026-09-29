@@ -105,6 +105,43 @@ int main()
         else                                    ok (name + ": valid mono WAV, audio intact");
     }
 
+    // ---- 4. Failure path must still fire the completion callback exactly once ----
+    // Regression: run()'s early returns (unreadable input, bad output dir, write failure,
+    // cancel) used to skip completeProcessing(), so single-file mode never reported the error.
+    {
+        ScopedJuceInitialiser_GUI juceInit; // completion is delivered via MessageManager::callAsync
+
+        AudioFileProcessor::ProcessingOptions badOptions;
+        badOptions.inputFilePath    = tempDir.getChildFile ("does_not_exist.wav").getFullPathName();
+        badOptions.outputDirectory  = outDir.getFullPathName();
+        badOptions.selectedChannels = { 0 };
+
+        int completions = 0;
+        AudioFileProcessor::ProcessingResult completionResult;
+
+        AudioFileProcessor failing;
+        failing.startProcessing (badOptions, nullptr,
+                                 [&] (const AudioFileProcessor::ProcessingResult& r)
+                                 { ++completions; completionResult = r; });
+
+        // Bounded wait: fails (rather than hangs) if the callback never fires.
+        const auto deadline = Time::getMillisecondCounterHiRes() + 5000.0;
+        while (completions == 0 && Time::getMillisecondCounterHiRes() < deadline)
+            MessageManager::getInstance()->runDispatchLoopUntil (20);
+
+        // Keep pumping briefly so a duplicate callback would be caught.
+        MessageManager::getInstance()->runDispatchLoopUntil (300);
+
+        if (completions != 1)
+            fail ("failed run: completion callback fired " + String (completions) + " time(s), expected exactly 1");
+        else if (completionResult.success)
+            fail ("failed run: completion result reported success");
+        else if (completionResult.errorMessage.isEmpty())
+            fail ("failed run: completion result has empty error message");
+        else
+            ok ("failed run: completion fired once with error: " + completionResult.errorMessage);
+    }
+
     std::cout << "\n=== " << (failures == 0 ? "PASS" : "FAIL")
               << " (" << failures << " failure(s)) ===" << std::endl;
     return failures == 0 ? 0 : 1;
