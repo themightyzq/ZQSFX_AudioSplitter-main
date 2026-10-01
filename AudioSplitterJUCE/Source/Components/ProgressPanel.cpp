@@ -5,8 +5,9 @@
 // Constants for layout and timing
 namespace
 {
-    constexpr int LABEL_HEIGHT = 25;
+    constexpr int LABEL_HEIGHT = 24;
     constexpr int PROGRESS_BAR_HEIGHT = 30;
+    constexpr int CANCEL_BUTTON_WIDTH = 90;
     constexpr int UPDATE_INTERVAL_MS = 100;
     constexpr double MIN_ELAPSED_SECONDS = 0.001;  // 1ms minimum to prevent division by zero
 }
@@ -85,6 +86,18 @@ void ProgressPanel::paint(juce::Graphics& g)
 }
 
 //==============================================================================
+int ProgressPanel::getPreferredHeight() const
+{
+    const int margin = ModernLookAndFeel::Spacing::sm;
+    const int spacing = ModernLookAndFeel::Spacing::xs;
+
+    // Batch: files/current-file row, elapsed/speed row, then the bar with Cancel.
+    // Simple: status line, then the bar (with Cancel while a single file runs).
+    const int labelRows = isBatchMode ? 2 : 1;
+    return margin * 2 + labelRows * LABEL_HEIGHT + labelRows * spacing + PROGRESS_BAR_HEIGHT;
+}
+
+//==============================================================================
 void ProgressPanel::resized()
 {
     auto bounds = getLocalBounds();
@@ -93,44 +106,39 @@ void ProgressPanel::resized()
 
     bounds.reduce(margin, margin);
 
+    // Bar row, with the Cancel button at its right end whenever it is showing.
+    auto layoutBarRow = [&](juce::Rectangle<int> row)
+    {
+        if (cancelButton.isVisible())
+        {
+            cancelButton.setBounds(row.removeFromRight(CANCEL_BUTTON_WIDTH));
+            row.removeFromRight(spacing * 2);
+        }
+        progressBar.setBounds(row);
+    };
+
     if (isBatchMode)
     {
-        // Batch mode: Show all progress info + cancel button
-        filesLabel.setBounds(bounds.removeFromTop(LABEL_HEIGHT));
+        // Row 1: "Processing: 47 of 200 (23%)" | "Current: <file>"
+        auto row1 = bounds.removeFromTop(LABEL_HEIGHT);
+        filesLabel.setBounds(row1.removeFromLeft(row1.getWidth() * 2 / 5));
+        currentFileLabel.setBounds(row1);
         bounds.removeFromTop(spacing);
 
-        currentFileLabel.setBounds(bounds.removeFromTop(LABEL_HEIGHT));
+        // Row 2: "Elapsed ... | Remaining ..." | "Speed: ..."
+        auto row2 = bounds.removeFromTop(LABEL_HEIGHT);
+        timeInfoLabel.setBounds(row2.removeFromLeft(row2.getWidth() * 3 / 5));
+        speedLabel.setBounds(row2);
         bounds.removeFromTop(spacing);
 
-        // Progress bar with cancel button on the right
-        auto progressRow = bounds.removeFromTop(PROGRESS_BAR_HEIGHT);
-        cancelButton.setBounds(progressRow.removeFromRight(80));
-        progressRow.removeFromRight(spacing);
-        progressBar.setBounds(progressRow);
-        bounds.removeFromTop(spacing);
-
-        timeInfoLabel.setBounds(bounds.removeFromTop(LABEL_HEIGHT));
-        bounds.removeFromTop(spacing);
-
-        speedLabel.setBounds(bounds.removeFromTop(LABEL_HEIGHT));
+        layoutBarRow(bounds.removeFromTop(PROGRESS_BAR_HEIGHT));
     }
     else
     {
-        // Simple mode: label + progress bar (+ optional cancel button)
         progressLabel.setBounds(bounds.removeFromTop(LABEL_HEIGHT));
         bounds.removeFromTop(spacing);
 
-        if (cancelButton.isVisible())
-        {
-            auto progressRow = bounds.removeFromTop(PROGRESS_BAR_HEIGHT);
-            cancelButton.setBounds(progressRow.removeFromRight(80));
-            progressRow.removeFromRight(spacing);
-            progressBar.setBounds(progressRow);
-        }
-        else
-        {
-            progressBar.setBounds(bounds);
-        }
+        layoutBarRow(bounds.removeFromTop(PROGRESS_BAR_HEIGHT));
     }
 }
 
@@ -168,6 +176,8 @@ void ProgressPanel::startProgress()
 {
     // mirrors Python progress initialization
     isActive = true;
+    cancelPending = false;
+    cancelButton.setEnabled(true);
     currentProgress = 0.0;
     currentText = "Starting...";
 
@@ -210,11 +220,15 @@ void ProgressPanel::resetProgress()
     timeInfoLabel.setVisible(false);
     speedLabel.setVisible(false);
     cancelButton.setVisible(false);
+    cancelButton.setEnabled(true);
+    cancelPending = false;
     progressLabel.setVisible(true);
 
     updateProgressDisplay();
     stopTimer();
     resized();  // Re-layout for simple mode
+    if (onPreferredHeightChanged)
+        onPreferredHeightChanged();
 }
 
 void ProgressPanel::setSimpleModeCancelVisible(bool visible)
@@ -225,7 +239,19 @@ void ProgressPanel::setSimpleModeCancelVisible(bool visible)
     {
         cancelButton.setVisible(visible);
         resized();
+        if (onPreferredHeightChanged)
+            onPreferredHeightChanged();
     }
+}
+
+void ProgressPanel::setCancelPending()
+{
+    jassert(juce::MessageManager::getInstance()->isThisTheMessageThread());
+
+    cancelPending = true;
+    cancelButton.setEnabled(false);
+    progressLabel.setText("Cancelling...", juce::dontSendNotification);
+    currentFileLabel.setText("Cancelling... finishing the files in progress", juce::dontSendNotification);
 }
 
 void ProgressPanel::setIndeterminate(bool indeterminate)
@@ -278,7 +304,7 @@ void ProgressPanel::updateProgressDisplay()
     }
     
     // Update text
-    progressLabel.setText(currentText, juce::dontSendNotification);
+    progressLabel.setText(cancelPending ? juce::String("Cancelling...") : currentText, juce::dontSendNotification);
 
     juce::Logger::writeToLog("Progress updated: " + juce::String(currentProgress * 100.0, 1) +
                             "% - " + currentText);
@@ -328,6 +354,8 @@ void ProgressPanel::updateBatchProgress(double overallProgress,
         cancelButton.setVisible(true);
         progressLabel.setVisible(false);
         resized();  // Re-layout UI for batch mode
+        if (onPreferredHeightChanged)
+            onPreferredHeightChanged();
     }
 
     // Update batch display
@@ -361,7 +389,11 @@ void ProgressPanel::updateBatchDisplay()
                       juce::dontSendNotification);
 
     // Update current file: "Current: AMBNat_Ocean_Waves_48kHz.wav"
-    if (currentFile.isNotEmpty())
+    if (cancelPending)
+    {
+        currentFileLabel.setText("Cancelling... finishing the files in progress", juce::dontSendNotification);
+    }
+    else if (currentFile.isNotEmpty())
     {
         currentFileLabel.setText("Current: " + currentFile, juce::dontSendNotification);
     }

@@ -73,6 +73,10 @@ public:
         static constexpr int lg = 24;  // 24px
         static constexpr int xl = 32;  // 32px
         static constexpr int xxl = 48; // 48px
+
+        // Header band of a GroupComponent as drawGroupComponentOutline paints it (title text,
+        // hairline at y = 24). Controls placed inside a group must start below this.
+        static constexpr int groupTitleBand = 28;
     };
 
     //==============================================================================

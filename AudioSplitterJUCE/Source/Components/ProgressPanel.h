@@ -68,6 +68,13 @@ public:
      */
     void setSimpleModeCancelVisible(bool visible);
 
+    /**
+     * Acknowledge a Cancel click: disables the Cancel button (so it cannot be pressed twice)
+     * and shows "Cancelling..." in place of the file/status text until the run reports back.
+     * Cleared by resetProgress().
+     */
+    void setCancelPending();
+
     //==============================================================================
     // Enhanced batch progress reporting (Phase 2.2)
 
@@ -92,10 +99,23 @@ public:
     void updateProgressSafely(double progress, const juce::String& text);
 
     //==============================================================================
+    // Layout
+
+    /**
+     * Height this panel needs right now: the simple layout (status line + bar) or the batch
+     * layout (two info rows + bar). Call from the owner's layout; onPreferredHeightChanged
+     * fires when it changes.
+     */
+    int getPreferredHeight() const;
+
+    std::function<void()> onPreferredHeightChanged;
+
+    //==============================================================================
     // Cancellation
 
     /**
-     * Callback invoked when user clicks Cancel during batch processing
+     * Callback invoked when the user clicks Cancel, in single-file and batch mode alike. The
+     * owner (MainComponent) stops whichever run is active.
      */
     std::function<void()> onCancelRequested;
 
@@ -135,6 +155,7 @@ private:
     juce::String currentText;
     bool isIndeterminate {false};
     bool isActive {false};
+    bool cancelPending {false};
 
     // Batch progress tracking (Phase 2.2)
     int batchCompletedFiles {0};

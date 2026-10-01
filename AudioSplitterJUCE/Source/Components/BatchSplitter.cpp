@@ -2,6 +2,7 @@
 #include "../MainComponent.h"
 #include "../Utils/AudioFileProcessor.h"
 #include "../UI/ModernLookAndFeel.h"
+#include "../Utils/UserNotice.h"
 
 //==============================================================================
 BatchSplitter::BatchSplitter(ConfigManager* config)
@@ -88,6 +89,10 @@ BatchSplitter::BatchSplitter(ConfigManager* config)
 //==============================================================================
 BatchSplitter::~BatchSplitter()
 {
+    // Quitting mid-batch: ~BatchRun cancels, waits for every worker to stop and only then frees
+    // the jobs and manager they were using. Nothing queued can reach this component afterwards.
+    batchRun.reset();
+    scanner.reset();
 }
 
 //==============================================================================
@@ -99,38 +104,40 @@ void BatchSplitter::paint(juce::Graphics& g)
 //==============================================================================
 void BatchSplitter::resized()
 {
-    auto bounds = getLocalBounds();
-    const int margin = ModernLookAndFeel::Spacing::md;
-    const int buttonWidth = 100;
-    const int rowHeight = 30;
     const int spacing = ModernLookAndFeel::Spacing::sm;
-    
-    bounds.reduce(margin, margin);
-    
+    auto bounds = getLocalBounds().reduced(kMargin);
+
     // Input directory row - mirrors Python grid layout
-    auto inputRow = bounds.removeFromTop(rowHeight);
-    inputDirLabel.setBounds(inputRow.removeFromLeft(120));
-    openInputButton.setBounds(inputRow.removeFromRight(buttonWidth));
+    auto inputRow = bounds.removeFromTop(kRowHeight);
+    inputDirLabel.setBounds(inputRow.removeFromLeft(kLabelWidth));
+    openInputButton.setBounds(inputRow.removeFromRight(kButtonWidth));
     inputRow.removeFromRight(spacing);
-    browseInputButton.setBounds(inputRow.removeFromRight(buttonWidth));
+    browseInputButton.setBounds(inputRow.removeFromRight(kButtonWidth));
     inputRow.removeFromRight(spacing);
     inputDirEditor.setBounds(inputRow);
-    
+
     bounds.removeFromTop(spacing);
-    
+
     // Output directory row - mirrors Python grid layout
-    auto outputRow = bounds.removeFromTop(rowHeight);
-    outputDirLabel.setBounds(outputRow.removeFromLeft(120));
-    openOutputButton.setBounds(outputRow.removeFromRight(buttonWidth));
+    auto outputRow = bounds.removeFromTop(kRowHeight);
+    outputDirLabel.setBounds(outputRow.removeFromLeft(kLabelWidth));
+    openOutputButton.setBounds(outputRow.removeFromRight(kButtonWidth));
     outputRow.removeFromRight(spacing);
-    browseOutputButton.setBounds(outputRow.removeFromRight(buttonWidth));
+    browseOutputButton.setBounds(outputRow.removeFromRight(kButtonWidth));
     outputRow.removeFromRight(spacing);
     outputDirEditor.setBounds(outputRow);
-    
+
     bounds.removeFromTop(spacing * 2);
-    
+
     // File count label - mirrors Python file count display
-    fileCountLabel.setBounds(bounds.removeFromTop(rowHeight));
+    fileCountLabel.setBounds(bounds.removeFromTop(kRowHeight));
+}
+
+int BatchSplitter::getPreferredHeight() const
+{
+    // Mirrors resized(): margin, two rows with a gap, a double gap, the count row, margin.
+    return kMargin + kRowHeight + ModernLookAndFeel::Spacing::sm + kRowHeight
+         + ModernLookAndFeel::Spacing::sm * 2 + kRowHeight + kMargin;
 }
 
 //==============================================================================
@@ -200,7 +207,7 @@ void BatchSplitter::startProcessing()
         auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::WarningIcon,
                                                              "Invalid Input",
                                                              "Please select an input directory.");
-        juce::AlertWindow::showAsync(options, nullptr);
+        UserNotice::show(options);
         return;
     }
 
@@ -209,132 +216,109 @@ void BatchSplitter::startProcessing()
         auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::WarningIcon,
                                                              "Invalid Output",
                                                              "Please select an output directory.");
-        juce::AlertWindow::showAsync(options, nullptr);
+        UserNotice::show(options);
         return;
     }
 
-    if (validAudioFiles.isEmpty())
+    if (scanner != nullptr)
+    {
+        auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::InfoIcon,
+                                                             "Still Scanning",
+                                                             "The input folder is still being read. Try again in a moment.");
+        UserNotice::show(options);
+        return;
+    }
+
+    if (scannedFiles.empty())
     {
         auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::WarningIcon,
                                                              "No Files",
                                                              "No WAV files found in the input directory.");
-        juce::AlertWindow::showAsync(options, nullptr);
+        UserNotice::show(options);
         return;
     }
 
-    const int totalFiles = validAudioFiles.size();
+    if (batchRun != nullptr)
+    {
+        auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::InfoIcon,
+                                                             "Batch In Progress",
+                                                             "A batch is already running. Wait for it to finish or cancel it.");
+        UserNotice::show(options);
+        return;
+    }
+
+    const int totalFiles = (int) scannedFiles.size();
     juce::Logger::writeToLog("Starting parallel batch processing of " + juce::String(totalFiles) + " files");
 
-    // Create BatchJobManager with callbacks
-    batchJobManager = std::make_unique<BatchJobManager>(
-        totalFiles,
-        [this](double progress, const juce::String& currentFile, int completed, int total)
-        {
-            onBatchProgress(progress, currentFile, completed, total);
-        },
-        [this](const BatchJobManager::BatchResult& result)
-        {
-            onBatchComplete(result);
-        }
-    );
+    auto* mainComponent = findParentComponentOfClass<MainComponent>();
+    const OptionsPanel* optionsPanel = mainComponent != nullptr ? mainComponent->getOptionsPanel() : nullptr;
 
-    // Determine optimal thread count (4-8 workers based on CPU cores)
-    const int numCores = juce::SystemStats::getNumCpus();
-    const int numWorkers = juce::jlimit(4, 8, numCores);
+    std::vector<AudioFileProcessor::ProcessingOptions> jobOptions;
+    jobOptions.reserve((size_t) totalFiles);
 
-    threadPool = std::make_unique<juce::ThreadPool>(numWorkers);
-    juce::Logger::writeToLog("Created thread pool with " + juce::String(numWorkers) + " workers");
-
-    // Clear previous jobs
-    batchJobs.clear();
-
-    // Create and submit all jobs
-    for (int i = 0; i < totalFiles; ++i)
+    for (const auto& scanned : scannedFiles)
     {
-        const auto& file = validAudioFiles[i];
-
-        // Build processing options
         AudioFileProcessor::ProcessingOptions options;
-        options.inputFilePath = file.getFullPathName();
+        options.inputFilePath = scanned.file.getFullPathName();
         options.outputDirectory = currentOutputDir;
 
-        // Get all channels for this file
-        auto fileInfo = audioAnalyzer.analyzeFile(options.inputFilePath);
-        if (fileInfo.isValid)
+        // Every channel of the file, as counted by the background scan (no disk access here).
+        for (int ch = 0; ch < scanned.numChannels; ++ch)
+            options.selectedChannels.push_back(ch);
+
+        // Same panel reading as the single-file tab. UCS naming is deliberately not applied
+        // here: one category/description across many files would give every file the same
+        // output names. Batch outputs are named <source>_<channel>.
+        if (optionsPanel != nullptr)
+            optionsPanel->applyTo(options);
+
+        jobOptions.push_back(options);
+    }
+
+    // 4-8 workers based on CPU cores
+    const int numWorkers = juce::jlimit(4, 8, juce::SystemStats::getNumCpus());
+    juce::Logger::writeToLog("Created thread pool with " + juce::String(numWorkers) + " workers");
+
+    // Both callbacks run on the message thread. The SafePointer drops one that is queued when
+    // this component is destroyed; BatchRun drops them once the run itself is gone.
+    juce::Component::SafePointer<BatchSplitter> weakThis(this);
+    batchRun = std::make_unique<BatchRun>(
+        jobOptions, numWorkers,
+        [weakThis](double progress, const juce::String& currentFile, int completed, int total)
         {
-            options.selectedChannels.clear();
-            for (int ch = 0; ch < fileInfo.numChannels; ++ch)
-            {
-                options.selectedChannels.push_back(ch);
-            }
-        }
-
-        // Get settings from OptionsPanel
-        if (auto* mainComponent = findParentComponentOfClass<MainComponent>())
+            if (auto* self = weakThis.getComponent())
+                self->onBatchProgress(progress, currentFile, completed, total);
+        },
+        [weakThis](const BatchJobManager::BatchResult& result)
         {
-            if (auto* optionsPanel = mainComponent->getOptionsPanel())
-            {
-                options.customChannelNames = optionsPanel->getCustomNames();
+            if (auto* self = weakThis.getComponent())
+                self->onBatchComplete(result);
+        });
 
-                if (optionsPanel->getOverrideSampleRate())
-                {
-                    auto sampleRateStr = optionsPanel->getSampleRate();
-                    if (sampleRateStr.contains("Hz"))
-                        options.sampleRate = sampleRateStr.getDoubleValue();
-                    else
-                        options.sampleRate = 0.0;
-                }
-
-                if (optionsPanel->getOverrideBitDepth())
-                {
-                    auto bitDepthStr = optionsPanel->getBitDepth();
-                    if (bitDepthStr.contains("bit"))
-                        options.bitDepth = bitDepthStr.getIntValue();
-                    else
-                        options.bitDepth = 0;
-                }
-
-                options.preserveMetadata = optionsPanel->getPreserveIXML();
-                options.stereoToMono = optionsPanel->getStereoToMono();
-            }
-        }
-
-        // Create job and add to thread pool
-        auto* job = new BatchProcessingJob(options, i, batchJobManager.get());
-        batchJobs.add(job);
-        threadPool->addJob(job, false);  // false = don't delete job when done (we manage it)
-
-        juce::Logger::writeToLog("Submitted job " + juce::String(i) + ": " + file.getFileName());
+    // Show batch mode (and its Cancel button) immediately rather than at the first report.
+    if (mainComponent != nullptr)
+    {
+        if (auto* progressPanel = mainComponent->getProgressPanel())
+            progressPanel->updateBatchProgress(0.0, {}, 0, totalFiles);
     }
 
     juce::Logger::writeToLog("All " + juce::String(totalFiles) + " jobs submitted to thread pool");
+
+    if (onBusyChanged)
+        onBusyChanged();
+}
+
+void BatchSplitter::cancelProcessing()
+{
+    if (batchRun != nullptr)
+        batchRun->cancel();
 }
 
 void BatchSplitter::updateFileCount()
 {
-    // mirrors update_file_count() (lines 474-480)
-    countWavFiles();
-    
-    juce::String countText;
-    if (fileCount == 0)
-    {
-        countText = "No WAV files found";
-    }
-    else if (fileCount == 1)
-    {
-        countText = "1 WAV file found";
-    }
-    else
-    {
-        countText = juce::String(fileCount) + " WAV files found";
-    }
-    
-    fileCountLabel.setText(countText, juce::dontSendNotification);
-    juce::Logger::writeToLog("File count updated: " + countText);
-    
-    // Notify main component that directory analysis is complete
-    if (onDirectoryAnalyzed)
-        onDirectoryAnalyzed();
+    // mirrors update_file_count() (lines 474-480), but the folder is read on a background
+    // thread: a folder of thousands of files, or one on a slow drive, must not freeze the window.
+    scanInputFolder();
 }
 
 //==============================================================================
@@ -412,38 +396,75 @@ void BatchSplitter::openOutputLocation()
     }
 }
 
-void BatchSplitter::countWavFiles()
+void BatchSplitter::scanInputFolder()
 {
-    // mirrors WAV file counting logic (lines 476-480)
+    // A newer choice supersedes a scan still running: destroying it joins its thread and drops
+    // any of its callbacks that are already queued.
+    scanner.reset();
+    scannedFiles.clear();
     fileCount = 0;
-    validAudioFiles.clear();
-    
-    if (currentInputDir.isEmpty())
-        return;
-    
+
     juce::File inputDir(currentInputDir);
-    if (!inputDir.isDirectory())
-        return;
-    
-    // Find WAV files and validate them - mirrors Python os.listdir() + .endswith(".wav") (line 477)
-    auto files = inputDir.findChildFiles(juce::File::findFiles, false, "*.wav");
-    
-    for (const auto& file : files)
+    if (currentInputDir.isEmpty() || !inputDir.isDirectory())
     {
-        // Validate each file using AudioAnalyzer - more thorough than Python version
-        if (audioAnalyzer.isValidAudioFile(file.getFullPathName()))
-        {
-            validAudioFiles.add(file);
-            fileCount++;
-            juce::Logger::writeToLog("Valid WAV file found: " + file.getFileName());
-        }
-        else
-        {
-            juce::Logger::writeToLog("Invalid or corrupted WAV file skipped: " + file.getFileName());
-        }
+        fileCountLabel.setText("No WAV files found", juce::dontSendNotification);
+        if (onDirectoryAnalyzed)
+            onDirectoryAnalyzed();
+        return;
     }
-    
-    juce::Logger::writeToLog("Found " + juce::String(fileCount) + " valid WAV files in directory");
+
+    fileCountLabel.setText("Scanning folder...", juce::dontSendNotification);
+
+    juce::Component::SafePointer<BatchSplitter> weakThis(this);
+    scanner = std::make_unique<FolderScanner>(
+        inputDir,
+        [weakThis](int scanned, int total)
+        {
+            if (auto* self = weakThis.getComponent())
+                self->onScanProgress(scanned, total);
+        },
+        [weakThis](std::vector<FolderScanner::Entry> entries, int skipped)
+        {
+            if (auto* self = weakThis.getComponent())
+                self->onScanFinished(std::move(entries), skipped);
+        });
+
+    // Split must wait for the scan; tell the window now that it is running.
+    if (onDirectoryAnalyzed)
+        onDirectoryAnalyzed();
+}
+
+void BatchSplitter::onScanProgress(int scanned, int total)
+{
+    fileCountLabel.setText("Scanning folder... " + juce::String(scanned) + " of " + juce::String(total) + " files",
+                           juce::dontSendNotification);
+}
+
+void BatchSplitter::onScanFinished(std::vector<FolderScanner::Entry> entries, int skipped)
+{
+    // Called from the scanner's own queued message; the scanner has nothing left to do, so
+    // release it (this joins its already-finished thread).
+    scannedFiles = std::move(entries);
+    fileCount = (int) scannedFiles.size();
+    scanner.reset();
+
+    juce::String countText;
+    if (fileCount == 0)
+        countText = "No WAV files found";
+    else if (fileCount == 1)
+        countText = "1 WAV file found";
+    else
+        countText = juce::String(fileCount) + " WAV files found";
+
+    if (skipped > 0)
+        countText += " (" + juce::String(skipped) + " unreadable, skipped)";
+
+    fileCountLabel.setText(countText, juce::dontSendNotification);
+    juce::Logger::writeToLog("File count updated: " + countText);
+
+    // Notify main component that directory analysis is complete
+    if (onDirectoryAnalyzed)
+        onDirectoryAnalyzed();
 }
 
 //==============================================================================
@@ -473,15 +494,19 @@ void BatchSplitter::onBatchComplete(const BatchJobManager::BatchResult& result)
 
     if (result.wasCancelled)
     {
-        message = "Batch processing cancelled by user.\n\n";
+        message = "Batch processing cancelled.\n\n";
+        message += "Finished before the cancel: " + juce::String(result.successfulFiles) + " of "
+                 + juce::String(result.totalFiles) + " files\n";
+        message += "Not processed: " + juce::String(result.cancelledFiles) + "\n";
+        message += "Files that were still being written were discarded; no existing file was replaced by a partial one.\n";
     }
     else
     {
         message = "Batch processing completed!\n\n";
+        message += "Total files: " + juce::String(result.totalFiles) + "\n";
+        message += "Successful: " + juce::String(result.successfulFiles) + "\n";
     }
 
-    message += "Total files: " + juce::String(result.totalFiles) + "\n";
-    message += "Successful: " + juce::String(result.successfulFiles) + "\n";
     message += "Failed: " + juce::String(result.failedFiles) + "\n";
     message += "Total time: " + juce::String(result.totalProcessingTimeSeconds, 1) + " seconds\n";
 
@@ -489,34 +514,32 @@ void BatchSplitter::onBatchComplete(const BatchJobManager::BatchResult& result)
     {
         message += "\nFailed files:\n";
         for (const auto& error : result.errorMessages)
-        {
             message += "  " + error + "\n";
-        }
     }
 
-    auto messageType = result.wasCancelled ? juce::MessageBoxIconType::WarningIcon :
-                       (result.failedFiles == 0) ? juce::MessageBoxIconType::InfoIcon :
-                       juce::MessageBoxIconType::WarningIcon;
+    auto messageType = (result.wasCancelled || result.failedFiles > 0) ? juce::MessageBoxIconType::WarningIcon
+                                                                        : juce::MessageBoxIconType::InfoIcon;
 
     auto options = juce::MessageBoxOptions::makeOptionsOk(messageType,
                                                          "Batch Processing Complete",
                                                          message);
-    juce::AlertWindow::showAsync(options, nullptr);
+    UserNotice::show(options);
 
-    // Reset progress panel
+    // Leave batch mode: hides the batch labels and Cancel button
     if (auto* mainComponent = findParentComponentOfClass<MainComponent>())
     {
         if (auto* progressPanel = mainComponent->getProgressPanel())
-        {
-            progressPanel->updateProgressSafely(0.0, "Ready");
-        }
+            progressPanel->resetProgress();
     }
 
     juce::Logger::writeToLog("Batch processing complete: " + juce::String(result.successfulFiles) +
-                            " succeeded, " + juce::String(result.failedFiles) + " failed");
+                            " succeeded, " + juce::String(result.failedFiles) + " failed, " +
+                            juce::String(result.cancelledFiles) + " cancelled");
 
-    // Clean up
-    batchJobs.clear();
-    threadPool.reset();
-    batchJobManager.reset();
+    // Tear the run down (pool drained first, then jobs, then manager) and let the window
+    // re-enable Split.
+    batchRun.reset();
+
+    if (onBusyChanged)
+        onBusyChanged();
 }

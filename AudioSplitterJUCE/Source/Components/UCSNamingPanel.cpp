@@ -4,7 +4,7 @@
 UCSNamingPanel::UCSNamingPanel(UCSManager* manager, ConfigManager* config)
     : ucsManager(manager),
       configManager(config),
-      ucsGroup("ucsGroup", "UCS Naming (Universal Category System)"),
+      ucsGroup("ucsGroup", "Universal Category System"),
       enableUCSToggle("Enable UCS Naming"),
       categoryLabel("categoryLabel", "Category:"),
       subcategoryLabel("subcategoryLabel", "Subcategory:"),
@@ -121,61 +121,51 @@ void UCSNamingPanel::paint(juce::Graphics& g)
 
 void UCSNamingPanel::resized()
 {
-    auto bounds = getLocalBounds();
-    const int margin = ModernLookAndFeel::Spacing::md;
-    const int spacing = ModernLookAndFeel::Spacing::sm;
+    constexpr int titleBand = ModernLookAndFeel::Spacing::groupTitleBand;
+    constexpr int labelWidth = 100;
 
-    bounds.reduce(margin, margin);
-
-    // Group encompasses entire panel
+    // Group encompasses entire panel; every control sits below its title band.
     ucsGroup.setBounds(getLocalBounds());
+    auto bounds = getLocalBounds().withTrimmedTop(titleBand).reduced(kPadding * 2, kPadding);
 
-    // Start from inside the group
-    bounds.removeFromTop(25); // Space for group title
-    bounds.reduce(spacing, spacing);
+    enableUCSToggle.setBounds(bounds.removeFromTop(kRowHeight));
+    bounds.removeFromTop(kRowGap);
 
-    // Enable toggle at top
-    auto toggleArea = bounds.removeFromTop(25);
-    enableUCSToggle.setBounds(toggleArea);
-    bounds.removeFromTop(spacing);
-
-    // Three rows: Category, Subcategory, Description
-    auto rowHeight = 30;
-    auto labelWidth = 100;
-
-    // Category row
-    auto categoryRow = bounds.removeFromTop(rowHeight);
+    auto categoryRow = bounds.removeFromTop(kRowHeight);
     categoryLabel.setBounds(categoryRow.removeFromLeft(labelWidth));
     categoryCombo.setBounds(categoryRow);
-    bounds.removeFromTop(spacing);
+    bounds.removeFromTop(kRowGap);
 
-    // Subcategory row
-    auto subcategoryRow = bounds.removeFromTop(rowHeight);
+    auto subcategoryRow = bounds.removeFromTop(kRowHeight);
     subcategoryLabel.setBounds(subcategoryRow.removeFromLeft(labelWidth));
     subcategoryCombo.setBounds(subcategoryRow);
-    bounds.removeFromTop(spacing);
+    bounds.removeFromTop(kRowGap);
 
-    // Description row
-    auto descriptionRow = bounds.removeFromTop(rowHeight);
+    auto descriptionRow = bounds.removeFromTop(kRowHeight);
     descriptionLabel.setBounds(descriptionRow.removeFromLeft(labelWidth));
     descriptionEditor.setBounds(descriptionRow);
-    bounds.removeFromTop(spacing * 2);
+    bounds.removeFromTop(kRowGap);
 
-    // Preview row
-    auto previewRow = bounds.removeFromTop(30);
+    auto previewRow = bounds.removeFromTop(kRowHeight);
     previewLabel.setBounds(previewRow.removeFromLeft(labelWidth));
     previewText.setBounds(previewRow);
 }
 
 int UCSNamingPanel::getPreferredContentHeight()
 {
-    // Mirrors resized() exactly: outer margin, group title, inner spacing, toggle, three
-    // 30 px rows with a spacing gap each, a double gap, then the 30 px preview row.
-    const int margin  = ModernLookAndFeel::Spacing::md;
-    const int spacing = ModernLookAndFeel::Spacing::sm;
-    const int rowHeight = 30;
-    return margin * 2 + 25 + spacing * 2 + 25 + spacing
-         + (rowHeight + spacing) * 3 + spacing + rowHeight;
+    // Mirrors resized(): title band, top and bottom padding, then the toggle and the four
+    // labelled rows with a gap between each.
+    return ModernLookAndFeel::Spacing::groupTitleBand + kPadding * 2
+         + kRowHeight * 5 + kRowGap * 4;
+}
+
+void UCSNamingPanel::setBatchTabActive(bool batchActive)
+{
+    if (batchTabActive == batchActive)
+        return;
+
+    batchTabActive = batchActive;
+    updateFilenamePreview();
 }
 
 //==============================================================================
@@ -310,10 +300,13 @@ void UCSNamingPanel::populateCategoryCombo()
         categoryCombo.addItem(name, id++);
     }
 
-    // Select first item by default
+    // Select the first category and fill its subcategories right now. A ComboBox's
+    // sendNotification is asynchronous, so relying on its onChange left the Subcategory empty
+    // until the message loop had run (and for good in anything that never runs one).
     if (categoryCombo.getNumItems() > 0)
     {
-        categoryCombo.setSelectedId(1, juce::sendNotification);
+        categoryCombo.setSelectedId(1, juce::dontSendNotification);
+        populateSubcategoryCombo();
     }
 }
 
@@ -322,7 +315,7 @@ void UCSNamingPanel::populateSubcategoryCombo()
     if (!ucsManager)
         return;
 
-    subcategoryCombo.clear();
+    subcategoryCombo.clear(juce::dontSendNotification);
 
     juce::String categoryCode = getCategory();
     if (categoryCode.isEmpty())
@@ -335,11 +328,11 @@ void UCSNamingPanel::populateSubcategoryCombo()
         subcategoryCombo.addItem(subcat, id++);
     }
 
-    // Select first item by default
+    // Select the first subcategory (callers refresh the preview and notify listeners). A category
+    // with none says so instead of showing a blank box.
+    subcategoryCombo.setTextWhenNothingSelected("(no subcategories)");
     if (subcategoryCombo.getNumItems() > 0)
-    {
-        subcategoryCombo.setSelectedId(1, juce::sendNotification);
-    }
+        subcategoryCombo.setSelectedId(1, juce::dontSendNotification);
 }
 
 void UCSNamingPanel::categoryChanged()
@@ -365,8 +358,15 @@ void UCSNamingPanel::updateFilenamePreview()
 {
     if (taxonomyUnavailable)
     {
-        previewText.setText("UCS naming unavailable: taxonomy data failed to load. Reinstall the application if this persists.",
-                             juce::dontSendNotification);
+        // Short enough for the preview row; the startup alert and this tooltip carry the detail.
+        previewText.setText("UCS unavailable: taxonomy failed to load", juce::dontSendNotification);
+        previewText.setTooltip("The embedded UCS taxonomy data failed to load. Reinstall the application if this persists.");
+        return;
+    }
+
+    if (batchTabActive)
+    {
+        previewText.setText("Not used by Batch (single file only)", juce::dontSendNotification);
         return;
     }
 

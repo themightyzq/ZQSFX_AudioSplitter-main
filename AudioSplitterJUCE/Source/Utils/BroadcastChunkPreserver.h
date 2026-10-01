@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_core/juce_core.h>
+#include <functional>
 
 /**
     BroadcastChunkPreserver
@@ -54,6 +55,43 @@ namespace BroadcastChunkPreserver
                    const juce::StringArray& chunkIds,
                    juce::String& message);
 
+    /** Optional edit applied to each chunk's bytes after it is read from the source and before it
+        is written to `dest` (used to rewrite sample-rate fields when the audio was converted).
+        It may change the size. Leave empty to copy verbatim. */
+    using ChunkTransform = std::function<void (const juce::String& chunkId, juce::MemoryBlock& payload)>;
+
+    /** As above, applying `transform` to each chunk that is copied. */
+    bool preserve (const juce::File& source,
+                   const juce::File& dest,
+                   const juce::StringArray& chunkIds,
+                   juce::String& message,
+                   const ChunkTransform& transform);
+
     /** Convenience overload using defaultChunkIds(). */
     bool preserve (const juce::File& source, const juce::File& dest, juce::String& message);
+
+    //==========================================================================
+    // Sample-rate (and bit-depth) conversion: keeping the metadata true to the OUTPUT file.
+    //
+    // After a conversion the copied fields would otherwise describe the SOURCE: rates, and counts
+    // of samples at the source rate. Fields rewritten:
+    //   iXML  FILE_SAMPLE_RATE, TIMESTAMP_SAMPLE_RATE -> output rate
+    //         TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI/LO  -> rescaled to the output rate
+    //         AUDIO_BIT_DEPTH                         -> output bit depth
+    //   bext  TimeReference                           -> rescaled to the output rate
+    //         CodingHistory                           -> one EBU R98 line recording the output
+    //                                                    format and the conversion (the source's
+    //                                                    own history is kept)
+    //   smpl/cue (as JUCE exposes them): SamplePeriod, loop start/end and cue offsets, rescaled.
+    // Left alone on purpose: iXML DIGITIZER_SAMPLE_RATE (the rate the recorder captured at, which
+    // is still true), SPEED/timecode frame rates, and opaque cue-region (ltxt) data.
+
+    /** Returns `ixml` with the rate and sample-count fields above rewritten. A tag that is not
+        present is not added. `outputBitDepth` 0 leaves AUDIO_BIT_DEPTH alone. */
+    juce::String retargetIXml (const juce::String& ixml, double sourceRate, double outputRate, int outputBitDepth);
+
+    /** Rewrites the same fields in JUCE's WAV metadata map (the bext, smpl and cue values that
+        WavAudioFormat reads and writes). `outputBitDepth` is used in the coding-history line.
+        Returns a short description of what changed, for the log. */
+    juce::String retargetMetadataValues (juce::StringPairArray& values, double sourceRate, double outputRate, int outputBitDepth);
 }

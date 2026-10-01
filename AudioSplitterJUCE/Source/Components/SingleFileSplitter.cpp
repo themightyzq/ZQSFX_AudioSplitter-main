@@ -1,5 +1,6 @@
 #include "SingleFileSplitter.h"
 #include "../UI/ModernLookAndFeel.h"
+#include "../Utils/UserNotice.h"
 #include "../MainComponent.h"
 
 //==============================================================================
@@ -120,84 +121,82 @@ void SingleFileSplitter::paint(juce::Graphics& g)
 //==============================================================================
 void SingleFileSplitter::resized()
 {
-    auto bounds = getLocalBounds();
-    const int margin = ModernLookAndFeel::Spacing::md;     // 16px
-    const int buttonWidth = 120;                           // Increased from 100 for better readability
-    const int minRowHeight = 40;                           // Increased from 30 for better touch targets
-    const int spacing = ModernLookAndFeel::Spacing::sm;    // 8px
-    
-    // Calculate responsive row height based on available space
-    int totalHeight = bounds.getHeight();
-    int rowHeight = juce::jmax(minRowHeight, totalHeight / 15); // At least 1/15 of total height
-    
-    bounds.reduce(margin, margin);
-    
-    // File selection row - improved responsive layout
-    auto fileRow = bounds.removeFromTop(rowHeight);
-    int labelWidth = juce::jmax(140, bounds.getWidth() / 6); // Responsive label width, minimum 140px
-    fileLabel.setBounds(fileRow.removeFromLeft(labelWidth));
-    openFileButton.setBounds(fileRow.removeFromRight(buttonWidth));
-    fileRow.removeFromRight(spacing);
-    browseFileButton.setBounds(fileRow.removeFromRight(buttonWidth));
-    fileRow.removeFromRight(spacing);
+    auto bounds = getLocalBounds().reduced(kMargin);
+
+    // File selection row
+    auto fileRow = bounds.removeFromTop(kRowHeight);
+    fileLabel.setBounds(fileRow.removeFromLeft(kLabelWidth));
+    openFileButton.setBounds(fileRow.removeFromRight(kFileButtonWidth));
+    fileRow.removeFromRight(kGap);
+    browseFileButton.setBounds(fileRow.removeFromRight(kFileButtonWidth));
+    fileRow.removeFromRight(kGap);
     filePathEditor.setBounds(fileRow);
-    
-    bounds.removeFromTop(spacing);
-    
-    // Output directory row - improved responsive layout
-    auto outputRow = bounds.removeFromTop(rowHeight);
-    outputDirLabel.setBounds(outputRow.removeFromLeft(labelWidth)); // Use same responsive width
-    openOutputButton.setBounds(outputRow.removeFromRight(buttonWidth));
-    outputRow.removeFromRight(spacing);
-    browseOutputButton.setBounds(outputRow.removeFromRight(buttonWidth));
-    outputRow.removeFromRight(spacing);
+
+    bounds.removeFromTop(kGap);
+
+    // Output directory row
+    auto outputRow = bounds.removeFromTop(kRowHeight);
+    outputDirLabel.setBounds(outputRow.removeFromLeft(kLabelWidth));
+    openOutputButton.setBounds(outputRow.removeFromRight(kFileButtonWidth));
+    outputRow.removeFromRight(kGap);
+    browseOutputButton.setBounds(outputRow.removeFromRight(kFileButtonWidth));
+    outputRow.removeFromRight(kGap);
     outputDirEditor.setBounds(outputRow);
-    
-    bounds.removeFromTop(spacing * 2);
-    
-    // Channel selection group - takes remaining space
+
+    bounds.removeFromTop(kGroupGap);
+
+    // Channel selection group - takes the rest; everything inside sits below its title band.
     channelGroup.setBounds(bounds);
-    
-    auto channelBounds = bounds.reduced(margin);
-    channelBounds.removeFromTop(20); // group header space
-    channelSelectionLabel.setBounds(channelBounds.removeFromTop(rowHeight));
+    auto inner = bounds.withTrimmedTop(ModernLookAndFeel::Spacing::groupTitleBand)
+                       .reduced(kGroupPadding, 0)
+                       .withTrimmedBottom(kGroupPadding);
 
-    // Channel selection helper buttons row (Phase 2 UI/UX improvement)
-    auto helperRow = channelBounds.removeFromTop(rowHeight);
+    // One header row: caption, All / None / Invert, and the running count on the right.
+    auto header = inner.removeFromTop(kHeaderRowHeight);
+    channelSelectionLabel.setBounds(header.removeFromLeft(190));
+    selectAllButton.setBounds(header.removeFromLeft(kHelperButtonWidth));
+    header.removeFromLeft(kGap);
+    selectNoneButton.setBounds(header.removeFromLeft(kHelperButtonWidth));
+    header.removeFromLeft(kGap);
+    invertSelectionButton.setBounds(header.removeFromLeft(kHelperButtonWidth));
+    header.removeFromLeft(kGap);
+    channelCountLabel.setBounds(header);
 
-    // Left side: helper buttons
-    selectAllButton.setBounds(helperRow.removeFromLeft(kHelperButtonWidth));
-    helperRow.removeFromLeft(spacing);
-    selectNoneButton.setBounds(helperRow.removeFromLeft(kHelperButtonWidth));
-    helperRow.removeFromLeft(spacing);
-    invertSelectionButton.setBounds(helperRow.removeFromLeft(kHelperButtonWidth));
+    inner.removeFromTop(kGap);
 
-    // Right side: channel count label
-    channelCountLabel.setBounds(helperRow);
+    // The channel buttons are children of channelGroup, so their coordinates are relative to
+    // it (they used to be placed from its top-left corner, over the title).
+    const auto gridOrigin = inner.getPosition() - bounds.getPosition();
+    const int gridWidth = inner.getWidth();
+    const int perRow = juce::jmax(1, (gridWidth + kChannelCellGap) / (kChannelCellMinWidth + kChannelCellGap));
+    const int cellWidth = (gridWidth - (perRow - 1) * kChannelCellGap) / perRow;
 
-    channelBounds.removeFromTop(spacing); // spacing before channel grid
-
-    // Layout channel buttons in a responsive grid
-    if (channelButtons.size() > 0)
+    for (int i = 0; i < channelButtons.size(); ++i)
     {
-        // Calculate responsive button layout
-        int availableWidth = channelBounds.getWidth();
-        int minButtonWidth = 120;  // Minimum width for readability
-        int buttonsPerRow = juce::jmax(1, availableWidth / (minButtonWidth + spacing));
-        int buttonWidth = (availableWidth - (buttonsPerRow - 1) * spacing) / buttonsPerRow;
-        int buttonHeight = juce::jmax(35, rowHeight); // Increased minimum height from 25 to 35
-        
-        for (int i = 0; i < channelButtons.size(); ++i)
-        {
-            int row = i / buttonsPerRow;
-            int col = i % buttonsPerRow;
-            
-            int x = col * (buttonWidth + spacing);
-            int y = row * (buttonHeight + spacing);
-            
-            channelButtons[i]->setBounds(x, y, buttonWidth, buttonHeight);
-        }
+        const int row = i / perRow;
+        const int col = i % perRow;
+        channelButtons[i]->setBounds(gridOrigin.x + col * (cellWidth + kChannelCellGap),
+                                     gridOrigin.y + row * (kChannelCellHeight + kChannelCellGap),
+                                     cellWidth, kChannelCellHeight);
     }
+}
+
+int SingleFileSplitter::channelGridRows(int gridWidth) const
+{
+    const int perRow = juce::jmax(1, (gridWidth + kChannelCellGap) / (kChannelCellMinWidth + kChannelCellGap));
+    return juce::jmax(1, (channelButtons.size() + perRow - 1) / perRow);
+}
+
+int SingleFileSplitter::getPreferredHeight(int width) const
+{
+    const int gridWidth = width - 2 * kMargin - 2 * kGroupPadding;
+    const int gridHeight = channelGridRows(gridWidth) * (kChannelCellHeight + kChannelCellGap) - kChannelCellGap;
+
+    // Mirrors resized(): margin, two rows, group gap, group (title band, header row, gap, grid,
+    // bottom padding), margin.
+    return kMargin + kRowHeight + kGap + kRowHeight + kGroupGap
+         + ModernLookAndFeel::Spacing::groupTitleBand + kHeaderRowHeight + kGap + gridHeight + kGroupPadding
+         + kMargin;
 }
 
 //==============================================================================
@@ -291,7 +290,7 @@ void SingleFileSplitter::startProcessing()
         auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::WarningIcon,
                                                              "Invalid Input",
                                                              "Please select an audio file to process.");
-        juce::AlertWindow::showAsync(options, nullptr);
+        UserNotice::show(options);
         return;
     }
     
@@ -300,7 +299,7 @@ void SingleFileSplitter::startProcessing()
         auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::WarningIcon,
                                                              "Invalid Output",
                                                              "Please select an output directory.");
-        juce::AlertWindow::showAsync(options, nullptr);
+        UserNotice::show(options);
         return;
     }
     
@@ -310,17 +309,17 @@ void SingleFileSplitter::startProcessing()
         auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::WarningIcon,
                                                              "No Channels Selected",
                                                              "Please select at least one channel to extract.");
-        juce::AlertWindow::showAsync(options, nullptr);
+        UserNotice::show(options);
         return;
     }
     
     // Check if already processing
-    if (audioProcessor->isProcessing())
+    if (running || audioProcessor->isProcessing())
     {
         auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::InfoIcon,
                                                              "Processing In Progress",
                                                              "Audio processing is already in progress.");
-        juce::AlertWindow::showAsync(options, nullptr);
+        UserNotice::show(options);
         return;
     }
     
@@ -330,74 +329,15 @@ void SingleFileSplitter::startProcessing()
     options.outputDirectory = currentOutputDir;
     options.selectedChannels = selectedChannels;
     
-    // Get settings from OptionsPanel - mirrors Python options integration
-    if (auto* mainComponent = findParentComponentOfClass<MainComponent>())
+    // Settings from the OptionsPanel (shared with the batch tab via OptionsPanel::applyTo).
+    auto* mainComponent = findParentComponentOfClass<MainComponent>();
+    if (mainComponent != nullptr && mainComponent->getOptionsPanel() != nullptr)
     {
-        if (auto* optionsPanel = mainComponent->getOptionsPanel())
-        {
-            // Get custom channel names
-            options.customChannelNames = optionsPanel->getCustomNames();
-            
-            // Parse sample rate override - mirrors Python lines 1752-1756
-            if (optionsPanel->getOverrideSampleRate())
-            {
-                auto sampleRateStr = optionsPanel->getSampleRate();
-                if (sampleRateStr.contains("Hz"))
-                {
-                    // Extract number from string like "48000 Hz"
-                    options.sampleRate = sampleRateStr.getDoubleValue();
-                }
-                else if (sampleRateStr != "Same as input")
-                {
-                    options.sampleRate = sampleRateStr.getDoubleValue();
-                }
-                else
-                {
-                    options.sampleRate = 0.0; // Keep original
-                }
-            }
-            else
-            {
-                options.sampleRate = 0.0; // Keep original if override not enabled
-            }
-            
-            // Parse bit depth override - mirrors Python lines 1757-1761
-            if (optionsPanel->getOverrideBitDepth())
-            {
-                auto bitDepthStr = optionsPanel->getBitDepth();
-                if (bitDepthStr.contains("bit"))
-                {
-                    // Extract number from string like "16 bit"
-                    options.bitDepth = bitDepthStr.getIntValue();
-                }
-                else if (bitDepthStr != "Same as input")
-                {
-                    options.bitDepth = bitDepthStr.getIntValue();
-                }
-                else
-                {
-                    options.bitDepth = 0; // Keep original
-                }
-            }
-            else
-            {
-                options.bitDepth = 0; // Keep original if override not enabled
-            }
-            
-            // Get checkbox options
-            options.preserveMetadata = optionsPanel->getPreserveIXML();
-            options.stereoToMono = optionsPanel->getStereoToMono();
-        }
+        mainComponent->getOptionsPanel()->applyTo(options);
     }
     else
     {
-        // Fallback defaults if OptionsPanel not accessible
         juce::Logger::writeToLog("Warning: Could not access OptionsPanel, using defaults");
-        options.customChannelNames = "";
-        options.sampleRate = 0.0;
-        options.bitDepth = 0;
-        options.preserveMetadata = true;
-        options.stereoToMono = false;
     }
 
     // Get UCS naming settings from MainComponent
@@ -427,16 +367,45 @@ void SingleFileSplitter::startProcessing()
     juce::Logger::writeToLog("Starting audio processing with " + juce::String(selectedChannels.size()) +
                             " channels from: " + currentFilePath);
     
-    // Start processing with progress callbacks
+    // Start processing with progress callbacks. Both are delivered on the message thread; the
+    // SafePointer makes them harmless if this component is destroyed first.
+    running = true;
+    if (mainComponent != nullptr)
+    {
+        if (auto* progressPanel = mainComponent->getProgressPanel())
+        {
+            progressPanel->startProgress();
+            progressPanel->setSimpleModeCancelVisible(true);
+        }
+    }
+
+    juce::Component::SafePointer<SingleFileSplitter> weakThis(this);
     audioProcessor->startProcessing(options,
-                                   [this](double progress, const juce::String& message)
+                                   [weakThis](double progress, const juce::String& message)
                                    {
-                                       onProcessingProgress(progress, message);
+                                       if (auto* self = weakThis.getComponent())
+                                           self->onProcessingProgress(progress, message);
                                    },
-                                   [this](const AudioFileProcessor::ProcessingResult& result)
+                                   [weakThis](const AudioFileProcessor::ProcessingResult& result)
                                    {
-                                       onProcessingComplete(result);
+                                       if (auto* self = weakThis.getComponent())
+                                           self->onProcessingComplete(result);
                                    });
+
+    if (onBusyChanged)
+        onBusyChanged();
+}
+
+bool SingleFileSplitter::isBusy() const
+{
+    return running;
+}
+
+void SingleFileSplitter::cancelProcessing()
+{
+    // Flag only: the worker stops within one audio buffer and removes its temporary files.
+    if (running)
+        audioProcessor->requestCancel();
 }
 
 //==============================================================================
@@ -454,7 +423,10 @@ void SingleFileSplitter::updateChannelButtons()
     {
         juce::Logger::writeToLog("File path is invalid or does not exist.");
         detectedChannels = 0;
+        resized();
         repaint(); // Update UI
+        if (onPreferredHeightChanged)
+            onPreferredHeightChanged();
         return;
     }
     
@@ -465,7 +437,10 @@ void SingleFileSplitter::updateChannelButtons()
     {
         juce::Logger::writeToLog("Error analyzing file: " + currentFileInfo.errorMessage);
         detectedChannels = 0;
+        resized();
         repaint(); // Update UI
+        if (onPreferredHeightChanged)
+            onPreferredHeightChanged();
         return;
     }
     
@@ -473,8 +448,9 @@ void SingleFileSplitter::updateChannelButtons()
     juce::Logger::writeToLog("Number of channels from audio file: " + juce::String(detectedChannels));
     
     // Create channel selection buttons - mirrors Python checkbox creation (lines 1037-1045)
-    const int maxChannels = 16; // Reasonable maximum for UI
-    int channelsToShow = juce::jmin(maxChannels, juce::jmax(detectedChannels, 8)); // Show at least 8
+    // One button per channel in the file (a 32-channel recording shows 32), at least 8 so the
+    // grid never looks empty; channels the file does not have are shown disabled.
+    int channelsToShow = juce::jmax(detectedChannels, 8);
     
     for (int i = 0; i < channelsToShow; ++i)
     {
@@ -519,9 +495,11 @@ void SingleFileSplitter::updateChannelButtons()
     // Update channel count label with initial state (Phase 2 UI/UX improvement)
     updateChannelCountLabel();
 
-    // Trigger layout update
+    // Trigger layout update (the tab's preferred height depends on the channel count)
     resized();
     repaint();
+    if (onPreferredHeightChanged)
+        onPreferredHeightChanged();
 
     // Notify main component that file analysis is complete - mirrors Python update_button_states() call
     if (onFileAnalyzed)
@@ -728,31 +706,49 @@ void SingleFileSplitter::onProcessingProgress(double progress, const juce::Strin
 
 void SingleFileSplitter::onProcessingComplete(const AudioFileProcessor::ProcessingResult& result)
 {
+    running = false;
+
+    if (auto* mainComponent = findParentComponentOfClass<MainComponent>())
+    {
+        if (auto* progressPanel = mainComponent->getProgressPanel())
+            progressPanel->resetProgress();
+    }
+
     if (result.success)
     {
         juce::String message = "Processing completed successfully!\n\n";
         message += "Files created:\n";
         for (const auto& file : result.outputFiles)
-        {
-            message += "• " + juce::File(file).getFileName() + "\n";
-        }
+            message += "- " + juce::File(file).getFileName() + "\n";
         message += "\nProcessing time: " + juce::String(result.processingTimeSeconds, 2) + " seconds";
-        
+
         auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::InfoIcon,
                                                              "Processing Complete",
                                                              message);
-        juce::AlertWindow::showAsync(options, nullptr);
-        
-        juce::Logger::writeToLog("Audio processing completed successfully. " + 
+        UserNotice::show(options);
+
+        juce::Logger::writeToLog("Audio processing completed successfully. " +
                                 juce::String(result.outputFiles.size()) + " files created.");
+    }
+    else if (result.wasCancelled)
+    {
+        auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::InfoIcon,
+                                                             "Processing Cancelled",
+                                                             "Processing was cancelled. No files were written or replaced.");
+        UserNotice::show(options);
+
+        juce::Logger::writeToLog("Audio processing cancelled by user.");
     }
     else
     {
         auto options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::WarningIcon,
                                                              "Processing Failed",
                                                              "Audio processing failed:\n\n" + result.errorMessage);
-        juce::AlertWindow::showAsync(options, nullptr);
-        
+        UserNotice::show(options);
+
         juce::Logger::writeToLog("Audio processing failed: " + result.errorMessage);
     }
+
+    if (onBusyChanged)
+        onBusyChanged();
 }

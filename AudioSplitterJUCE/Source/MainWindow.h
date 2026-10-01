@@ -52,13 +52,12 @@ private:
     // Configuration manager reference
     ConfigManager* configManager;
     
-    // Window dimensions. 1110 is what MainComponent::resized() needs to show both collapsible
-    // panels at their ideal height with the 200 px tab floor; below that it scales the panels
-    // down and the UCS preview row is the first thing to clip.
-    static constexpr int defaultWidth = 1200;
-    static constexpr int defaultHeight = 1110;
-    static constexpr int minWidth = 1000;
-    static constexpr int minHeight = 850;
+    // Window dimensions, owned by MainComponent so the snapshot tool and the layout test use the
+    // same numbers. Sized for a 13-inch laptop; a window smaller than the content scrolls.
+    static constexpr int defaultWidth = MainComponent::kDefaultWidth;
+    static constexpr int defaultHeight = MainComponent::kDefaultHeight;
+    static constexpr int minWidth = MainComponent::kMinWidth;
+    static constexpr int minHeight = MainComponent::kMinHeight;
     
     //==============================================================================
     // Helper methods

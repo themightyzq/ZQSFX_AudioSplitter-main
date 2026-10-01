@@ -88,6 +88,8 @@ set(AUDIOSPLITTER_CORE_SOURCES
     Source/Utils/AudioAnalyzer.h
     Source/Utils/AudioFileProcessor.cpp
     Source/Utils/AudioFileProcessor.h
+    Source/Utils/SincResampler.cpp
+    Source/Utils/SincResampler.h
     Source/Utils/BroadcastChunkPreserver.cpp
     Source/Utils/BroadcastChunkPreserver.h
     Source/Utils/UCSManager.cpp
@@ -96,6 +98,10 @@ set(AUDIOSPLITTER_CORE_SOURCES
     Source/Utils/BatchJobManager.h
     Source/Utils/BatchProcessingJob.cpp
     Source/Utils/BatchProcessingJob.h
+    Source/Utils/FolderScanner.cpp
+    Source/Utils/FolderScanner.h
+    Source/Utils/BatchRun.cpp
+    Source/Utils/BatchRun.h
 
     # UI Theme (Modern UI implementation)
     Source/UI/ModernLookAndFeel.cpp
@@ -198,6 +204,77 @@ target_link_libraries(splitter_ui_snapshot PRIVATE
 )
 
 juce_generate_juce_header(splitter_ui_snapshot)
+
+# --- Layout gate: builds the real MainComponent at several window sizes and checks the geometry
+# (nothing clipped, nothing overlapping, text fits). Compiles the same core sources as the app.
+if(ZQ_BUILD_TESTS)
+    juce_add_console_app(LayoutTest PRODUCT_NAME "LayoutTest")
+
+    target_sources(LayoutTest PRIVATE
+        Tests/LayoutTest.cpp
+        ${AUDIOSPLITTER_CORE_SOURCES}
+    )
+
+    target_include_directories(LayoutTest PRIVATE Source)
+
+    target_compile_definitions(LayoutTest PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_MODAL_LOOPS_PERMITTED=1
+    )
+
+    target_link_libraries(LayoutTest PRIVATE
+        AudioSplitterBinaryData
+        zqsfx::ui
+        juce::juce_core
+        juce::juce_data_structures
+        juce::juce_events
+        juce::juce_graphics
+        juce::juce_gui_basics
+        juce::juce_gui_extra
+        juce::juce_audio_basics
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+    )
+
+    juce_generate_juce_header(LayoutTest)
+
+    add_test(NAME Layout COMMAND LayoutTest)
+
+    # Whole-window state through a real run (Split stays disabled, Cancel works), headless.
+    juce_add_console_app(SplitStateTest PRODUCT_NAME "SplitStateTest")
+
+    target_sources(SplitStateTest PRIVATE
+        Tests/SplitStateTest.cpp
+        ${AUDIOSPLITTER_CORE_SOURCES}
+    )
+
+    target_include_directories(SplitStateTest PRIVATE Source)
+
+    target_compile_definitions(SplitStateTest PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_MODAL_LOOPS_PERMITTED=1
+    )
+
+    target_link_libraries(SplitStateTest PRIVATE
+        AudioSplitterBinaryData
+        zqsfx::ui
+        juce::juce_core
+        juce::juce_data_structures
+        juce::juce_events
+        juce::juce_graphics
+        juce::juce_gui_basics
+        juce::juce_gui_extra
+        juce::juce_audio_basics
+        juce::juce_audio_formats
+        juce::juce_audio_utils
+    )
+
+    juce_generate_juce_header(SplitStateTest)
+
+    add_test(NAME SplitState COMMAND SplitStateTest)
+endif()
 
 # Platform-specific settings
 if(APPLE)

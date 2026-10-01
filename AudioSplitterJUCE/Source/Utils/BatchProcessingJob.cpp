@@ -18,13 +18,10 @@ BatchProcessingJob::BatchProcessingJob(const AudioFileProcessor::ProcessingOptio
 
 BatchProcessingJob::~BatchProcessingJob()
 {
-    // Ensure processor is stopped before destruction
+    // The owner (BatchRun) has already drained the pool, so no worker is inside runJob(); this
+    // only stops a processor thread that somehow outlived it.
     if (processor && processor->isProcessing())
-    {
         processor->cancelProcessing();
-        // Give it a moment to clean up
-        juce::Thread::sleep(100);
-    }
 
     juce::Logger::writeToLog("BatchProcessingJob " + juce::String(jobIndex) + " destroyed");
 }
@@ -32,67 +29,71 @@ BatchProcessingJob::~BatchProcessingJob()
 //==============================================================================
 juce::ThreadPoolJob::JobStatus BatchProcessingJob::runJob()
 {
-    // Extract filename for display
+    // A job that starts after a cancel (still queued when the user pressed Cancel) must not
+    // touch the disk, but it still has to be reported, or the batch never completes.
+    if (jobManager && (jobManager->isCancellationRequested() || shouldExit()))
+    {
+        jobManager->jobCancelled(jobIndex);
+        return jobHasFinished;
+    }
+
     juce::File inputFile(processingOptions.inputFilePath);
     const juce::String filename = inputFile.getFileName();
 
-    // Notify manager that this job is starting
     if (jobManager)
-    {
         jobManager->jobStarted(jobIndex, filename);
-    }
 
     juce::Logger::writeToLog("BatchProcessingJob " + juce::String(jobIndex) +
                             " started processing: " + filename);
 
-    // Set up progress callback (no completion callback -- we wait synchronously)
+    // Progress only; cancellation is handled by the polling loop below, never from this
+    // message-thread callback (a blocking stop there would freeze the UI).
     auto progressCallback = [this](double progress, const juce::String& message)
     {
-        if (jobManager && jobManager->isCancellationRequested())
-        {
-            if (processor)
-                processor->cancelProcessing();
-            return;
-        }
         onProgress(progress, message);
     };
+
+    // A batch-wide cancel (or the pool shutting down) reaches the processor at its next audio
+    // block, not at the next tick of the polling loop below.
+    processor->setExternalCancelCheck([this]
+    {
+        return (jobManager != nullptr && jobManager->isCancellationRequested()) || shouldExit();
+    });
 
     // Start processing thread, then block until it finishes
     processor->startProcessing(processingOptions, progressCallback, nullptr);
 
-    // Poll until the processor thread exits, checking for cancellation
+    bool cancelSignalled = false;
     while (processor->isProcessing())
     {
-        if ((jobManager && jobManager->isCancellationRequested()) || shouldExit())
+        if (!cancelSignalled && ((jobManager && jobManager->isCancellationRequested()) || shouldExit()))
         {
-            juce::Logger::writeToLog("BatchProcessingJob " + juce::String(jobIndex) + " cancelled");
-            processor->cancelProcessing();
-            return jobHasFinished;
+            // Flag-only: the worker sees it within one audio buffer, deletes its temporary
+            // files and reports wasCancelled. Keep waiting for it so the job never outlives
+            // (or races) its own processor.
+            processor->requestCancel();
+            cancelSignalled = true;
         }
-        juce::Thread::sleep(50);
+        juce::Thread::sleep(20);
     }
 
     // Thread is done -- read result directly (no message-thread dependency)
     auto jobResult = processor->getResult();
 
-    // Calculate processing time
     const double processingTime = (juce::Time::getCurrentTime() - jobStartTime).inSeconds();
 
-    // Report result to manager
     if (jobManager)
     {
         if (jobResult.success)
-        {
             jobManager->jobCompleted(jobIndex, processingTime);
-        }
+        else if (jobResult.wasCancelled)
+            jobManager->jobCancelled(jobIndex);
         else
-        {
             jobManager->jobFailed(jobIndex, jobResult.errorMessage);
-        }
     }
 
     juce::Logger::writeToLog("BatchProcessingJob " + juce::String(jobIndex) + " finished: " +
-                            (jobResult.success ? "SUCCESS" : "FAILED"));
+                            (jobResult.success ? "SUCCESS" : (jobResult.wasCancelled ? "CANCELLED" : "FAILED")));
 
     return jobHasFinished;
 }

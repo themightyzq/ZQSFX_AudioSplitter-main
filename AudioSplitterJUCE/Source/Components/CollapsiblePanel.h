@@ -97,7 +97,7 @@ private:
     //==============================================================================
     // Constants
     static constexpr int HEADER_HEIGHT = 32;
-    static constexpr int MIN_CONTENT_HEIGHT = 200;
+    static constexpr int MIN_CONTENT_HEIGHT = 100;
 
     //==============================================================================
     // UI Components

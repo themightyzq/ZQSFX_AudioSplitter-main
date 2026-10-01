@@ -65,6 +65,9 @@ public:
      */
     bool keyPressed(const juce::KeyPress& key) override;
 
+    /** Keeps the focused control in view: keyboard Tab can reach controls that are scrolled out. */
+    void focusOfChildComponentChanged(FocusChangeType cause) override;
+
     //==============================================================================
     // Tab management - mirrors Python notebook behavior
     
@@ -117,12 +120,44 @@ public:
      */
     UCSManager* getUCSManager() const { return ucsManager.get(); }
 
+    /** Whether the Split button can be pressed right now (for the split-state test). */
+    bool isSplitEnabled() const { return splitButton.isEnabled(); }
+
+    /** The two tabs, for the layout test and snapshot tool (load a file, switch tabs). */
+    SingleFileSplitter* getSingleFileSplitter() const { return singleFileSplitter.get(); }
+    BatchSplitter* getBatchSplitter() const { return batchSplitter.get(); }
+
+    /** Window size limits sized for a 13-inch laptop (a 1280x800 screen leaves about 1280x775
+        below the menu bar, less the title bar). Smaller than the content needs? It scrolls. */
+    static constexpr int kDefaultWidth = 1180;
+    static constexpr int kDefaultHeight = 740;
+    static constexpr int kMinWidth = 960;
+    static constexpr int kMinHeight = 640;
+
 private:
     //==============================================================================
     // Main UI components - mirrors Python UI structure
     
-    // Tabbed interface - mirrors Python notebook (lines 1202-1210)
-    juce::TabbedComponent tabbedComponent;
+    // Everything between the header and the bottom bar (tabs, Options, UCS Naming) lives in one
+    // scrolling column, so a short window scrolls instead of clipping. Declared before the
+    // components it holds so it outlives them. The progress bar and Split stay fixed below.
+    struct Body : public juce::Component {};
+    Body body;
+    juce::Viewport bodyViewport;
+
+    // Tabbed interface - mirrors Python notebook (lines 1202-1210). TabbedComponent only tells
+    // a subclass when the tab changes, and Split's enabled state depends on the active tab.
+    struct SplitterTabs : public juce::TabbedComponent
+    {
+        using juce::TabbedComponent::TabbedComponent;
+        void currentTabChanged(int, const juce::String&) override
+        {
+            if (onTabChanged)
+                onTabChanged();
+        }
+        std::function<void()> onTabChanged;
+    };
+    SplitterTabs tabbedComponent;
     
     // Tab components - mirrors Python tab setup
     std::unique_ptr<SingleFileSplitter> singleFileSplitter;
@@ -158,11 +193,22 @@ private:
     void setupOptionsPanel();
     void setupProgressPanel();
     void setupSplitButton();
+
+    // Scrolling-body layout. measureBody() is the height the column needs at a width; layoutBody()
+    // sizes the column (scrolling when it is taller than the viewport) and places its parts.
+    int getTabsPreferredHeight(int width) const;
+    int getPanelsPreferredHeight(int width) const;
+    void layoutBody();
     void setupColors();
     void showAboutBox();
 
     // Button callbacks - mirrors Python button command functions
     void splitButtonClicked();
+
+    /** Progress panel's Cancel button: stops whichever split is running. */
+    void cancelRunningOperation();
+
+    bool isSplitRunning() const;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainComponent)
 };

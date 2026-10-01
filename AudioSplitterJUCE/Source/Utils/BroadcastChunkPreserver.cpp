@@ -1,5 +1,8 @@
 #include "BroadcastChunkPreserver.h"
 
+#include <juce_audio_formats/juce_audio_formats.h>
+#include <cmath>
+
 namespace BroadcastChunkPreserver
 {
 
@@ -137,7 +140,8 @@ StringArray defaultChunkIds()
 }
 
 bool preserve (const File& source, const File& dest,
-               const StringArray& chunkIds, String& message)
+               const StringArray& chunkIds, String& message,
+               const ChunkTransform& transform)
 {
     if (! source.existsAsFile() || ! dest.existsAsFile())
     {
@@ -160,6 +164,8 @@ bool preserve (const File& source, const File& dest,
             skippedExisting.add (id); // JUCE already wrote one; don't duplicate
             continue;
         }
+        if (transform)
+            transform (id, block);
         pending.add ({ id, std::move (block) });
     }
 
@@ -270,9 +276,130 @@ bool preserve (const File& source, const File& dest,
     return true;
 }
 
+bool preserve (const File& source, const File& dest,
+               const StringArray& chunkIds, String& message)
+{
+    return preserve (source, dest, chunkIds, message, ChunkTransform());
+}
+
 bool preserve (const File& source, const File& dest, String& message)
 {
-    return preserve (source, dest, defaultChunkIds(), message);
+    return preserve (source, dest, defaultChunkIds(), message, ChunkTransform());
+}
+
+//==============================================================================
+namespace
+{
+    // Locates "<tag>value</tag>" (first occurrence). Returns false if absent.
+    bool findTagValue (const String& text, const String& tag, int& valueStart, int& valueEnd)
+    {
+        const String open = "<" + tag + ">";
+        const int openAt = text.indexOf (open);
+        if (openAt < 0)
+            return false;
+        valueStart = openAt + open.length();
+        valueEnd = text.indexOf (valueStart, "</" + tag + ">");
+        return valueEnd >= valueStart;
+    }
+
+    bool getTagValue (const String& text, const String& tag, String& value)
+    {
+        int s = 0, e = 0;
+        if (! findTagValue (text, tag, s, e))
+            return false;
+        value = text.substring (s, e).trim();
+        return true;
+    }
+
+    bool setTagValue (String& text, const String& tag, const String& value)
+    {
+        int s = 0, e = 0;
+        if (! findTagValue (text, tag, s, e))
+            return false;
+        text = text.substring (0, s) + value + text.substring (e);
+        return true;
+    }
+
+    int64 scaleSamples (int64 samples, double sourceRate, double outputRate)
+    {
+        return (int64) std::llround ((long double) samples * (long double) outputRate / (long double) sourceRate);
+    }
+}
+
+String retargetIXml (const String& ixml, double sourceRate, double outputRate, int outputBitDepth)
+{
+    String out = ixml;
+    const String newRate = String ((int64) std::llround (outputRate));
+
+    // The timestamp is a sample count at TIMESTAMP_SAMPLE_RATE (else the file's rate).
+    double timestampRate = sourceRate;
+    String text;
+    if (getTagValue (out, "TIMESTAMP_SAMPLE_RATE", text) && text.getDoubleValue() > 0.0)
+        timestampRate = text.getDoubleValue();
+    else if (getTagValue (out, "FILE_SAMPLE_RATE", text) && text.getDoubleValue() > 0.0)
+        timestampRate = text.getDoubleValue();
+
+    String hiText, loText;
+    if (getTagValue (out, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI", hiText)
+        && getTagValue (out, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO", loText))
+    {
+        const uint64 hi = (uint64) hiText.getLargeIntValue() & 0xFFFFFFFFull;
+        const uint64 lo = (uint64) loText.getLargeIntValue() & 0xFFFFFFFFull;
+        const int64 scaled = scaleSamples ((int64) ((hi << 32) | lo), timestampRate, outputRate);
+        setTagValue (out, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_HI", String ((int64) ((uint64) scaled >> 32)));
+        setTagValue (out, "TIMESTAMP_SAMPLES_SINCE_MIDNIGHT_LO", String ((int64) ((uint64) scaled & 0xFFFFFFFFull)));
+    }
+
+    setTagValue (out, "FILE_SAMPLE_RATE", newRate);
+    setTagValue (out, "TIMESTAMP_SAMPLE_RATE", newRate);
+    if (outputBitDepth > 0)
+        setTagValue (out, "AUDIO_BIT_DEPTH", String (outputBitDepth));
+
+    return out;
+}
+
+String retargetMetadataValues (StringPairArray& values, double sourceRate, double outputRate, int outputBitDepth)
+{
+    StringArray changed;
+
+    auto rescale = [&] (const String& key)
+    {
+        if (! values.containsKey (key))
+            return;
+        values.set (key, String (scaleSamples (values[key].getLargeIntValue(), sourceRate, outputRate)));
+        changed.add (key);
+    };
+
+    rescale (WavAudioFormat::bwavTimeReference);
+
+    const int numCues = values.getValue ("NumCuePoints", "0").getIntValue();
+    for (int i = 0; i < jmin (numCues, 1024); ++i)
+        rescale ("Cue" + String (i) + "Offset");
+
+    const int numLoops = values.getValue ("NumSampleLoops", "0").getIntValue();
+    for (int i = 0; i < jmin (numLoops, 64); ++i)
+    {
+        rescale ("Loop" + String (i) + "Start");
+        rescale ("Loop" + String (i) + "End");
+    }
+
+    // smpl SamplePeriod is nanoseconds per sample.
+    if (values.getValue ("SamplePeriod", "0").getLargeIntValue() > 0)
+    {
+        values.set ("SamplePeriod", String ((int64) std::llround (1.0e9 / outputRate)));
+        changed.add ("SamplePeriod");
+    }
+
+    // EBU R98 coding-history line: appended, never replacing what the recorder wrote.
+    const String history = values.getValue (WavAudioFormat::bwavCodingHistory, {});
+    String line = "A=PCM,F=" + String ((int64) std::llround (outputRate)) + ",W=" + String (outputBitDepth)
+                + ",M=mono,T=ZQ SFX Audio Splitter; converted from " + String ((int64) std::llround (sourceRate)) + " Hz\r\n";
+    if (history.isNotEmpty() && ! history.endsWith ("\n"))
+        line = "\r\n" + line;
+    values.set (WavAudioFormat::bwavCodingHistory, history + line);
+    changed.add ("CodingHistory");
+
+    return changed.joinIntoString (", ");
 }
 
 } // namespace BroadcastChunkPreserver

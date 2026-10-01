@@ -88,7 +88,9 @@ namespace testwav
     }
 
     // Build a complete `numFrames`-frame, 2-channel, 16-bit, 48k WAV with fmt/bext/iXML/data.
-    inline MemoryBlock buildFixtureWav (int numFrames = 16)
+    // `ixml`, `codingHistory` and `timeReferenceLow` let a test control the rate-dependent fields.
+    inline MemoryBlock buildFixtureWav (int numFrames = 16, const String& ixml = String (iXmlText()),
+                                        const String& codingHistory = {}, uint32 timeReferenceLow = 123456)
     {
         MemoryBlock fmtP;
         appendU16 (fmtP, 1);                 // PCM
@@ -104,7 +106,7 @@ namespace testwav
         appendFixed (bextP, "ZQREF-0001", 32);
         appendFixed (bextP, "2026-06-28", 10);
         appendFixed (bextP, "12:00:00", 8);
-        appendU32 (bextP, 123456);           // TimeReference low
+        appendU32 (bextP, timeReferenceLow); // TimeReference low
         appendU32 (bextP, 0);                // TimeReference high
         appendU16 (bextP, 1);                // Version
         appendZeros (bextP, 64);             // UMID
@@ -112,9 +114,11 @@ namespace testwav
         appendU16 (bextP, 0); appendU16 (bextP, 0);   // 5 loudness fields
         appendZeros (bextP, 180);            // Reserved
         jassert (bextP.getSize() == 602);
+        if (codingHistory.isNotEmpty())
+            bextP.append (codingHistory.toRawUTF8(), (size_t) codingHistory.getNumBytesAsUTF8());
 
         MemoryBlock ixmlP;
-        ixmlP.append (iXmlText(), strlen (iXmlText()));
+        ixmlP.append (ixml.toRawUTF8(), (size_t) ixml.getNumBytesAsUTF8());
 
         MemoryBlock dataP;
         for (int i = 0; i < numFrames; ++i)

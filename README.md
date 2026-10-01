@@ -2,8 +2,8 @@
 
 ZQ SFX Audio Splitter is a desktop app that splits a multichannel WAV file (up to 32 channels)
 into mono files, one per channel. It preserves BWF and iXML metadata, copying it verbatim at
-the RIFF chunk level, including for RF64 files over 4 GB, and names the output files to the
-UCS (Universal Category System) convention. macOS (universal binary), Windows, and Linux.
+the RIFF chunk level, including for RF64 files over 4 GB, and can name single-file output to
+the UCS (Universal Category System) convention. macOS (universal binary), Windows, and Linux.
 Built with JUCE.
 
 ## Install
@@ -19,16 +19,29 @@ since Gatekeeper blocks a plain double-click.
 
 ### Single file
 
-1. Drag a multichannel WAV file into the app.
-2. Click Split. Output files go to `<filename>_split/`, one mono file per channel.
+1. Drag a multichannel WAV file into the app, or choose one with Browse. Dropping a file sets
+   the output folder to `<filename>_split/` beside it; with Browse, choose the output folder.
+2. Tick the channels to extract, set UCS naming if you want it, and click Split. One mono file
+   is written per channel.
+3. Click Cancel next to the progress bar to stop. Nothing is written or replaced.
 
 ### Batch
 
 1. Switch to the Batch Split tab.
 2. Drag a folder of WAV files in, or browse for one.
-3. Set the UCS category, subcategory, and description.
-4. Click Split. Files are processed 4 to 8 at a time in parallel; a bad file is skipped and
-   the rest of the batch continues. You can cancel at any time.
+3. Click Split. Every channel of every WAV file in the folder is written as
+   `<source>_chanN.wav`, or `<source>_<name>.wav` with custom channel names. Files are
+   processed 4 to 8 at a time in parallel; a bad file is skipped and the rest of the batch
+   continues. UCS naming applies to the Single File tab only.
+4. Click Cancel next to the progress bar to stop. Files that finished stay; files still being
+   written are discarded.
+
+### Existing files
+
+Output is written to a temporary file next to its destination, checked, and only then moved over
+any existing file of the same name. If a write fails or you cancel, files already in the output
+folder are left as they were. Two channels that would get the same file name, or an output that
+would overwrite the source file, are refused before anything is written.
 
 ### Metadata preserved
 
@@ -43,7 +56,8 @@ MixPre-6/10) and Zoom (F4/F6/F8/F8n Pro) recorders.
 
 ### UCS filenames
 
-Output files are named `Category_Subcategory_Description_Channel.wav`, for example:
+On the Single File tab, output files are named `Category_Subcategory_Description_Channel.wav`,
+for example:
 
 - `AMBNat_Forest_MorningBirds_L.wav`
 - `DSnExt_Urban_CarPass_M.wav`
@@ -51,12 +65,18 @@ Output files are named `Category_Subcategory_Description_Channel.wav`, for examp
 
 ### Options
 
-- Sample rate override (44.1k, 48k, 96k, 192k)
-- Bit depth override (16-bit, 24-bit, 32-bit float)
+- Sample rate override (11.025k, 22.05k, 44.1k, 48k, 96k, 192k). Conversion uses a windowed-sinc
+  filter, so content above the new rate's Nyquist frequency is removed, not folded back. When the
+  rate or bit depth changes, the output's bext TimeReference, iXML rate, timestamp and bit-depth
+  fields are rewritten for the new format and a coding-history line records the conversion.
+- Bit depth override (8-bit, 16-bit, 24-bit, 32-bit float)
 - Custom channel names, comma-separated
-- Stereo-to-mono conversion
+- Stereo-to-mono: a 2-channel file with both channels ticked is written as one mono mix
+  (L plus R, halved) named `<source>_mono.wav`, or `..._M.wav` with UCS naming. Files with other
+  channel counts are split as usual.
 - iXML preservation on/off
-- Settings are remembered between sessions
+- The last-used folders, the custom channel names and which panels are collapsed are remembered
+  between sessions
 
 ## Build from source
 

@@ -28,6 +28,7 @@ public:
         int completedFiles {0};
         int successfulFiles {0};
         int failedFiles {0};
+        int cancelledFiles {0};     // Jobs stopped (or never started) because of a cancel; no output kept
         bool wasCancelled {false};  // True if user cancelled the batch
         juce::StringArray errorMessages;  // List of all errors encountered
         double totalProcessingTimeSeconds {0.0};
@@ -93,6 +94,13 @@ public:
      */
     void jobFailed(int jobIndex, const juce::String& errorMessage);
 
+    /**
+     * Mark a job as stopped by cancellation (including a job that never started). It counts as
+     * finished, so the completion callback still fires exactly once after a cancel.
+     * Thread-safe: Can be called from any worker thread
+     */
+    void jobCancelled(int jobIndex);
+
     //==============================================================================
     // Called from main thread
 
@@ -130,6 +138,7 @@ private:
     std::atomic<int> completedJobCount {0};
     std::atomic<int> successfulJobCount {0};
     std::atomic<int> failedJobCount {0};
+    std::atomic<int> cancelledJobCount {0};
 
     // Progress tracking
     struct JobProgress
@@ -154,6 +163,14 @@ private:
         }
     };
     std::vector<std::unique_ptr<JobProgress>> perJobProgress;  // Pre-allocated, never replaced
+
+    /** The tracking slot for a job index, or null if the index is out of range. */
+    JobProgress* findJob(int jobIndex) const
+    {
+        if (jobIndex < 0 || jobIndex >= static_cast<int>(perJobProgress.size()))
+            return nullptr;
+        return perJobProgress[static_cast<size_t>(jobIndex)].get();
+    }
 
     // Cancellation flag
     std::atomic<bool> cancellationRequested {false};
@@ -184,10 +201,12 @@ private:
     void updateProgressDisplay();
 
     /**
-     * Check if batch is complete and notify if so
-     * Thread-safe: Called after each job completes
+     * Count one finished job and, for the job that finishes the batch, post the completion
+     * callback. Exactly one caller sees `completed == totalJobCount`, so completion fires once
+     * even when the last jobs finish simultaneously. Call only after every other counter and
+     * error for this job has been recorded, so the final result is complete.
      */
-    void checkBatchCompletion();
+    void finishJob();
 
     /**
      * Build final result object

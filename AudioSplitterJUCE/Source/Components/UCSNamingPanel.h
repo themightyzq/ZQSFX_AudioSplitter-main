@@ -33,9 +33,14 @@ public:
     void resized() override;
 
     /** Height the content needs so the Preview row is not clipped. Computed from the same
-        constants resized() uses; the CollapsiblePanel wrapping this component must request at
-        least this much. */
+        constants resized() uses; the CollapsiblePanel wrapping this component must request
+        exactly this much (the page scrolls rather than squeezing it). */
     static int getPreferredContentHeight();
+
+    /** True while the Batch tab is showing. UCS names are applied by the Single File tab only
+        (one category and description over many files would give every file the same name), so
+        the preview says so instead of promising a name the batch will not use. */
+    void setBatchTabActive(bool batchActive);
 
     //==============================================================================
     // Settings access
@@ -134,6 +139,12 @@ private:
     juce::GroupComponent ucsGroup;
 
     //==============================================================================
+    // Layout constants shared by resized() and getPreferredContentHeight()
+    static constexpr int kPadding = 8;
+    static constexpr int kRowHeight = 28;
+    static constexpr int kRowGap = 4;
+
+    //==============================================================================
     // Data
 
     UCSManager* ucsManager {nullptr};
@@ -142,6 +153,9 @@ private:
     // True when the UCS taxonomy failed to load (see showTaxonomyUnavailableState()). Naming
     // controls stay disabled and the preview shows why, instead of silently doing nothing.
     bool taxonomyUnavailable {false};
+
+    // See setBatchTabActive().
+    bool batchTabActive {false};
 
     //==============================================================================
     // Helper methods

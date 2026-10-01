@@ -43,7 +43,8 @@ jobs:
             libxext-dev \
             libxinerama-dev \
             libxrandr-dev \
-            libxrender-dev
+            libxrender-dev \
+            xvfb
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }}
@@ -54,9 +55,17 @@ jobs:
         run: cmake --build build --config Release --parallel 2
         working-directory: AudioSplitterJUCE
 
-      # The real gate: metadata-preservation + split-pipeline tests must pass.
+      # The real gate: metadata-preservation, split-pipeline, data-safety, batch and layout tests
+      # must pass. The layout test builds the real window component, which needs a display on
+      # Linux, so it runs under a virtual one there.
       - name: Run tests
+        if: runner.os != 'Linux'
         run: ctest --test-dir build --build-config Release --output-on-failure
+        working-directory: AudioSplitterJUCE
+
+      - name: Run tests (Linux, virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a ctest --test-dir build --build-config Release --output-on-failure
         working-directory: AudioSplitterJUCE
 
       - name: Verify Universal Binary (macOS)

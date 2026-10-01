@@ -17,11 +17,12 @@ MainWindow::MainWindow(const juce::String& name, ConfigManager* config)
     // Set up window sizing FIRST - before creating content
     setupWindow();
     
-    // Create main component - DocumentWindow takes ownership
+    // Create main component - DocumentWindow takes ownership. setContentOwned() resizes the
+    // window to the content's (empty) size, so put the size chosen in setupWindow() back.
+    const int windowWidth = getWidth();
+    const int windowHeight = getHeight();
     setContentOwned(new MainComponent(configManager), true);
-    
-    // Ensure size is correct after setting content
-    setSize(defaultWidth, defaultHeight);
+    setSize(windowWidth, windowHeight);
     
     // Make window visible - mirrors Python root.mainloop() preparation
     setVisible(true);
@@ -72,9 +73,17 @@ void MainWindow::resized()
 //==============================================================================
 void MainWindow::setupWindow()
 {
-    // Set window size - much larger for proper UI display
-    setSize(defaultWidth, defaultHeight);
-    
+    // Open at the default size, but never larger than the screen's usable area (a 13-inch
+    // laptop is about 1280x775 below the menu bar).
+    int width = defaultWidth;
+    int height = defaultHeight;
+    if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+    {
+        width = juce::jmin(width, display->userArea.getWidth());
+        height = juce::jmin(height, display->userArea.getHeight());
+    }
+    setSize(width, height);
+
     // Set resize limits - allow window to be resized from minimum to maximum screen size
     setResizeLimits(minWidth, minHeight, 3000, 2000); // Set reasonable maximums
     

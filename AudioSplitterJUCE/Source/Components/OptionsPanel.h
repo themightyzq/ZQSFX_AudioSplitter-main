@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 #include "../Utils/ConfigManager.h"
+#include "../Utils/AudioFileProcessor.h"
+#include "../UI/ModernLookAndFeel.h"
 
 //==============================================================================
 /**
@@ -14,7 +16,6 @@
  * - Custom channel naming (mirrors lines 1612-1628)
  * - Stereo to mono conversion options (mirrors lines 1630-1673)
  * - iXML metadata preservation (mirrors lines 1675-1691)
- * - Channel remapping options (mirrors lines 1693-1701)
  */
 class OptionsPanel : public juce::Component
 {
@@ -67,19 +68,21 @@ public:
     bool getPreserveIXML() const;
     
     /**
-     * Get channel remapping option - mirrors Python channel_remapping_var.get() (line 1225)
+     * Copy every setting this panel owns (custom names, sample-rate and bit-depth overrides,
+     * metadata preservation, stereo-to-mono) into `options`. The one place both splitters read
+     * the panel, so single-file and batch runs can never interpret it differently.
      */
-    bool getChannelRemapping() const;
+    void applyTo(AudioFileProcessor::ProcessingOptions& options) const;
 
     //==============================================================================
     // Callback for settings changes - mirrors Python variable tracing
     std::function<void()> onSettingsChanged;
 
     /**
-     * The content height this panel needs at its minimum group size to lay out both rows
-     * (Sample Rate/Bit Depth/Options, then Custom Channel Names) without overlap. Uses the same
-     * constants as resized() so the two can never drift apart; the caller (MainComponent) should
-     * request at least this much height from the CollapsiblePanel wrapping this component.
+     * The content height this panel needs to lay out both rows (Sample Rate / Bit Depth /
+     * Options, then Custom Channel Names) without overlap or clipping. Fixed: resized() uses
+     * the same constants, so the two can never drift apart; the caller (MainComponent) requests
+     * exactly this much from the CollapsiblePanel wrapping this component.
      */
     static int getPreferredContentHeight();
 
@@ -90,13 +93,11 @@ private:
     // Sample rate selection - mirrors lines 1576-1592
     juce::GroupComponent sampleRateGroup;
     juce::ToggleButton overrideSampleRateToggle;  // mirrors override_sample_rate_var
-    juce::Label sampleRateLabel;
     juce::ComboBox sampleRateCombo;
     
     // Bit depth selection - mirrors lines 1594-1610
     juce::GroupComponent bitDepthGroup;
     juce::ToggleButton overrideBitDepthToggle;    // mirrors override_bit_depth_var
-    juce::Label bitDepthLabel;
     juce::ComboBox bitDepthCombo;
     
     // Custom channel naming - mirrors lines 1612-1628
@@ -109,7 +110,6 @@ private:
     juce::GroupComponent optionsGroup;
     juce::ToggleButton stereoToMonoToggle;
     juce::ToggleButton preserveIXMLToggle;
-    juce::ToggleButton channelRemappingToggle;
     
     //==============================================================================
     // State management
@@ -118,7 +118,11 @@ private:
     //==============================================================================
     // Layout constants shared between resized() and getPreferredContentHeight() so the
     // requested content height can never drift out of sync with what the layout actually needs.
-    static constexpr int kMinGroupHeight = 150; // Further increased for proper dropdown display
+    static constexpr int kPadding = 8;
+    static constexpr int kControlRowHeight = 28;                      // toggle rows, combo boxes, the names editor
+    static constexpr int kTopRowHeight = ModernLookAndFeel::Spacing::groupTitleBand
+                                         + 2 * kControlRowHeight + 4 + kPadding + 4; // title, toggle, combo (or 2nd toggle), gaps
+    static constexpr int kNamesRowHeight = ModernLookAndFeel::Spacing::groupTitleBand + kControlRowHeight + kPadding + 4;
 
     //==============================================================================
     // Helper methods

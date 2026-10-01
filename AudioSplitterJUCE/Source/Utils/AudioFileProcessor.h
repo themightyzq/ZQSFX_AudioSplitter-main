@@ -30,7 +30,17 @@ public:
         double sampleRate {0.0};                // 0 = keep original
         int bitDepth {0};                       // 0 = keep original
         bool preserveMetadata {true};
+
+        // Only acts on a 2-channel source with both channels selected: the pair is mixed
+        // ((L + R) / 2) into ONE mono file named "<source>_mono" (UCS suffix "M") instead of
+        // being split into two. Any other source or selection is split per channel as usual.
         bool stereoToMono {false};
+
+        // Test seam, empty in the app: called on the worker thread before every audio block with
+        // the number of samples written so far. A test blocks in it to hold a run mid-file at a
+        // known point (output temp file created, nothing finished) so cancel and teardown tests
+        // never depend on timing.
+        std::function<void(juce::int64 samplesProcessed)> blockHookForTesting;
 
         // UCS naming options
         bool useUCSNaming {false};
@@ -43,8 +53,9 @@ public:
     struct ProcessingResult
     {
         bool success {false};
+        bool wasCancelled {false};              // true when stopped by cancelProcessing()/requestCancel()
         juce::String errorMessage;
-        juce::StringArray outputFiles;
+        juce::StringArray outputFiles;          // only files that were fully written, verified and moved into place
         double processingTimeSeconds {0.0};
         juce::int64 totalSamplesProcessed {0};
     };
@@ -79,7 +90,23 @@ public:
                         CompletionCallback completionCallback = nullptr);
 
     /**
-     * Cancel processing - mirrors user cancellation in Python
+     * Ask the worker to stop and return immediately (safe on the message thread). The worker
+     * notices within one audio buffer, removes its temporary files and reports a result with
+     * wasCancelled == true. Existing output files are never touched by a cancelled run.
+     */
+    void requestCancel();
+
+    /**
+     * Optional extra stop condition, polled with the processor's own cancel flag at every audio
+     * block. BatchProcessingJob uses it so a batch-wide cancel takes effect at the next block
+     * instead of waiting for the job's polling loop. Set before startProcessing(); the callable
+     * runs on the worker thread.
+     */
+    void setExternalCancelCheck(std::function<bool()> check) { externalCancelCheck = std::move(check); }
+
+    /**
+     * requestCancel() and then block (up to 3 s) until the worker thread has stopped. Not for the
+     * message thread; used from teardown paths that must know the thread is gone.
      */
     void cancelProcessing();
 
@@ -118,6 +145,7 @@ private:
     // Progress tracking
     std::atomic<double> currentProgress {0.0};
     std::atomic<bool> shouldCancel {false};
+    std::function<bool()> externalCancelCheck;
 
     // Audio processing infrastructure
     juce::AudioFormatManager formatManager;
@@ -139,22 +167,42 @@ private:
      */
     bool setupOutputDirectory();
     
+    /** One output file: a single source channel, or (mixPartnerChannel >= 0) the mix of two. */
+    struct OutputPlan
+    {
+        int sourceChannel {0};
+        int mixPartnerChannel {-1};
+        juce::File target;
+    };
+
     /**
-     * Generate output filenames - mirrors Python filename generation (lines 716-732)
+     * Decide what files this run writes and what they are called (standard, custom-name, UCS
+     * or stereo-to-mono naming). Returns false and sets the error if two outputs would collide
+     * or an output would overwrite the source file.
      */
-    juce::StringArray generateOutputFilenames();
-    
+    bool buildOutputPlans(std::vector<OutputPlan>& plans);
+
     /**
-     * Process each selected channel - mirrors Python channel extraction (lines 734-820)
+     * Process every planned output. Two-phase so a failure never leaves a half-replaced set:
+     * (1) write and verify each output into a temporary file beside its target, (2) only when
+     * every temporary is complete, swap them over the targets. Temporaries are removed on any
+     * failure or cancel; existing files are only replaced by a finished, verified file.
      */
     bool processChannels();
-    
+
     /**
-     * Extract single channel to file - mirrors Python single channel processing
-     * @param channelIndex 0-based channel index
-     * @param outputPath Output file path
+     * Write one output into `destination` (a temporary file), checking every write, then
+     * re-open it and verify format, channel count and length.
      */
-    bool extractChannel(int channelIndex, const juce::String& outputPath);
+    bool writeOutputFile(const OutputPlan& plan, const juce::File& destination);
+
+    bool isCancelRequested() const
+    {
+        return threadShouldExit() || shouldCancel.load() || (externalCancelCheck && externalCancelCheck());
+    }
+
+    /** Record a cancel: error text plus wasCancelled, so callers can tell it from a failure. */
+    void setCancelled();
     
     /**
      * Apply audio format options - mirrors Python format conversion
