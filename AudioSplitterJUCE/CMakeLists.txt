@@ -7,7 +7,7 @@ if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 endif()
 
-project(AudioSplitter VERSION 1.0.0)
+project(AudioSplitter VERSION 1.1.0)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -52,7 +52,7 @@ juce_add_gui_app(AudioSplitter
     COMPANY_WEBSITE "https://www.zq-sfx.com"
     COMPANY_EMAIL "connect@zq-sfx.com"
     COMPANY_COPYRIGHT "Copyright (c) 2026 ZQ SFX"
-    VERSION "1.0.0"
+    VERSION "1.1.0"
     DESCRIPTION "Professional multichannel audio splitting tool"
     BUNDLE_ID "com.zqsfx.audiosplitter"
     MICROPHONE_PERMISSION_ENABLED FALSE
