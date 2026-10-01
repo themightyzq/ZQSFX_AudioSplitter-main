@@ -47,11 +47,11 @@ SincResampler::SincResampler(double inputRate, double outputRate)
 
     const double i0Beta = besselI0(kKaiserBeta);
 
-    table.assign((size_t) (kPhases + 1) * (size_t) numTaps, 0.0f);
+    table.assign((std::size_t) (kPhases + 1) * (std::size_t) numTaps, 0.0f);
     for (int phase = 0; phase <= kPhases; ++phase)
     {
         const double frac = (double) phase / (double) kPhases;
-        std::vector<double> coeffs((size_t) numTaps);
+        std::vector<double> coeffs((std::size_t) numTaps);
         double sum = 0.0;
 
         for (int j = 0; j < numTaps; ++j)
@@ -61,19 +61,19 @@ SincResampler::SincResampler(double inputRate, double outputRate)
             double w = 0.0;
             if (std::abs(r) < 1.0)
                 w = besselI0(kKaiserBeta * std::sqrt(1.0 - r * r)) / i0Beta;
-            coeffs[(size_t) j] = 2.0 * cutoffInInputUnits * sinc(2.0 * cutoffInInputUnits * x) * w;
-            sum += coeffs[(size_t) j];
+            coeffs[(std::size_t) j] = 2.0 * cutoffInInputUnits * sinc(2.0 * cutoffInInputUnits * x) * w;
+            sum += coeffs[(std::size_t) j];
         }
 
         // Unity gain at DC for every fractional position, so a steady level never ripples.
         for (int j = 0; j < numTaps; ++j)
-            table[(size_t) phase * (size_t) numTaps + (size_t) j] = (float) (coeffs[(size_t) j] / sum);
+            table[(std::size_t) phase * (std::size_t) numTaps + (std::size_t) j] = (float) (coeffs[(std::size_t) j] / sum);
     }
 
     // Before the first input sample the signal is silent: pre-fill the history the first
     // outputs reach back into.
     bufferStart = -(int64_t) halfTaps;
-    buffer.assign((size_t) halfTaps, 0.0f);
+    buffer.assign((std::size_t) halfTaps, 0.0f);
 }
 
 //==============================================================================

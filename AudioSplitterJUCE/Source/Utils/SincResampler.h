@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -47,6 +48,6 @@ private:
     int64_t bufferStart {0};   // absolute input index of buffer[0]
     int64_t nextOutput {0};    // index of the next output sample
 
-    const float* row(int phase) const { return table.data() + (size_t) phase * (size_t) numTaps; }
+    const float* row(int phase) const { return table.data() + (std::size_t) phase * (std::size_t) numTaps; }
     static void dualDot(const float* a, const float* b, const float* x, int n, float& sumA, float& sumB);
 };
